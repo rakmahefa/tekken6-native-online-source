@@ -357,9 +357,17 @@ jobs:
         run: |
           set -euo pipefail
           CMAKE_BUILD_DIR="$RUNNER_TEMP/t6-native-cmake-build"
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          SDK_OUT="$CUSTOM_WORKSPACE/third_party/rexglue-sdk/out"
           cmake --build "$CMAKE_BUILD_DIR" --target rexglue xdvdfs_tool ggpo --parallel 2
-          REXGLUE_BIN="$(find "$CMAKE_BUILD_DIR" -type f -executable -name rexglue -print -quit)"
-          test -n "$REXGLUE_BIN"
+          # ReXGlue's generated CMake config writes the executable into the SDK
+          # source tree's out/<platform> directory, not the top-level build tree.
+          REXGLUE_BIN="$(find "$SDK_OUT" -type f -executable -name rexglue -print -quit)"
+          if [[ -z "$REXGLUE_BIN" ]]; then
+            echo "Unable to find the built rexglue executable under $SDK_OUT" >&2
+            find "$CUSTOM_WORKSPACE/third_party/rexglue-sdk" -maxdepth 5 -type f -name rexglue -print >&2 || true
+            exit 1
+          fi
           "$REXGLUE_BIN" --help | tee "$RUNNER_TEMP/rexglue-help.txt"
           grep -Fq 'codegen' "$RUNNER_TEMP/rexglue-help.txt"
 
