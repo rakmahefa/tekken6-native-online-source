@@ -24,8 +24,12 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
     "$APPDIR/usr/share/tekken6-native-online" "$SOURCE_STAGE" "$OUT_DIR"
 
 echo "Building the native Qt launcher (no game image or generated game code is needed in CI)."
+# Public test builds show patch notes from this repository; official builds can still provide
+# their private release endpoint through launcher/official.cmake.
+RELEASE_API="${T6_APPIMAGE_RELEASE_API:-https://api.github.com/repos/rakmahefa/tekken6-native-online-source/releases/latest}"
 cmake -S "$ROOT/launcher" -B "$BUILD_ROOT/launcher" -G Ninja \
-    -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release \
+    "-DT6_VERSION=$VERSION" "-DT6_RELEASE_API=$RELEASE_API"
 cmake --build "$BUILD_ROOT/launcher" --parallel 2
 install -m 0755 "$BUILD_ROOT/launcher/Tekken6 Native Online" \
     "$APPDIR/usr/bin/tekken6-native-online"
