@@ -1,0 +1,43 @@
+name: Linux port smoke test
+
+on:
+  push:
+    branches:
+      - feature/native-linux-build
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-port-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-posix-components:
+    name: Compile GGPO POSIX port and XDVDFS tool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang cmake ninja-build
+
+      - name: Configure standalone Linux port tests
+        run: >-
+          cmake -S tests/linux-port -B build/linux-port -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile GGPO and XDVDFS
+        run: cmake --build build/linux-port --parallel 2
+
+      - name: Check patch whitespace
+        run: git diff --check
