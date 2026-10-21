@@ -29,6 +29,48 @@ server certificate, rank pictures and launcher art come from `launcher/official.
 which are not published; without them the launcher builds with placeholders (`T6_SERVER`, `T6_RELEASE_API` in
 `launcher/CMakeLists.txt`) and draws text instead of the art.
 
+## Native Linux build (experimental)
+
+The native Linux port is under active development. The Qt launcher and the standalone GGPO/XDVDFS/host-platform smoke targets have Linux build paths; full gameplay still requires a local build from a player's own supported Tekken 6 Xbox 360 copy. No game image, game data, saves, or generated game-specific C++ is shipped.
+
+### Build the launcher
+
+On Ubuntu 24.04, install the native compiler and Qt development headers, then build:
+
+```sh
+sudo apt update
+sudo apt install --yes clang cmake ninja-build qt6-base-dev
+cmake -S launcher -B build/launcher-linux -G Ninja \
+  -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+cmake --build build/launcher-linux --parallel
+```
+
+### Build the game from your own copy
+
+The SDK needs Clang 18 or newer, CMake 3.25 or newer, Ninja, Python 3, Git, Vulkan development headers and Linux audio/window-system dependencies. On Ubuntu 24.04 these can be installed with:
+
+```sh
+sudo apt update
+sudo apt install --yes clang cmake ninja-build python3 git build-essential \
+  libvulkan-dev libgtk-3-dev libx11-xcb-dev libxss-dev \
+  libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
+  libdecor-0-dev libasound2-dev libpulse-dev libpipewire-0.3-dev
+git submodule update --init --recursive
+```
+
+Then pass either an ISO image or the directory containing `Default.xex` and the adjacent `DATA*.BIN` files:
+
+```sh
+python3 builder/build_native_linux.py --check /path/to/your/Tekken6.iso
+python3 builder/build_native_linux.py /path/to/your/Tekken6.iso
+# or use the extracted game directory:
+python3 builder/build_native_linux.py /path/to/extracted/Tekken6
+```
+
+The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 before extracting or compiling it. It stores the private game copy, generated C++, CMake/Ninja cache, SDK outputs and resulting executable under the ignored `native/` and `generated/default/` paths. Subsequent builds reuse CMake/Ninja's object cache. Never commit those local files.
+
+**Current port limitations:** the full native game build and actual gameplay have not yet been verified in CI because CI intentionally has no copyrighted game image. Linux keyboard injection and Windows-only input diagnostics / profiler sampling are not implemented yet. The launcher relies on SDL for gamepad input, uses the engine's Vulkan path for GPU selection, and currently cannot hide or restore other game windows through Win32-style APIs on Linux. Treat Linux support as experimental until a local full build and real gameplay test pass.
+
 ## Credits
 
 - Based on [mahmoud-mess/tekken6-recomp](https://github.com/mahmoud-mess/tekken6-recomp) (the original ReXGlue setup
