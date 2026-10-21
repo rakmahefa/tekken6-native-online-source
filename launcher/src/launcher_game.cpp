@@ -1,6 +1,11 @@
 // Tekken 6 Native Online launcher - The game process: start, environment, windows, status file, commands, display options.
 
 #include "launcher.h"
+#if !defined(_WIN32)
+#include <signal.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 // the match is over because the opponent left: game closed (no forfeit of this side), message on the VS page
 // A line of the launcher in the game's log (m_gameLog): why the launcher ended the game, how the game process ended
@@ -86,13 +91,24 @@ void Launcher::addGameEnv(QProcessEnvironment& env, bool lookAndSound) const
 // the game's command line of a start: its data, this start's profile / cache / log, display and input options
 QStringList Launcher::gameArgs(const QString& user, const QString& runDir) const
 {
-	return QStringList{"--game_data_root=" + QDir::toNativeSeparators(gameDataRoot()),
-	                   "--user_data_root=" + QDir::toNativeSeparators(user),
-	                   "--cache_root=" + QDir::toNativeSeparators(QDir(runDir).filePath("cache")),
-	                   "--log_file=" + QDir::toNativeSeparators(QDir(runDir).filePath("tekken6.log")),
-	                   "--fullscreen=" + QString(m_fullscreen ? "true" : "false"), tearingArg(), "--async_shader_compilation=true", renderTargetArg(),
-	                   QString("--draw_resolution_scale_x=%1").arg(m_resScale), QString("--draw_resolution_scale_y=%1").arg(m_resScale),
-	                   "--d3d12_adapter=" + QString::number(gpuIndex())} + inputArgs();
+	QStringList args{
+		"--game_data_root=" + QDir::toNativeSeparators(gameDataRoot()),
+		"--user_data_root=" + QDir::toNativeSeparators(user),
+		"--cache_root=" + QDir::toNativeSeparators(QDir(runDir).filePath("cache")),
+		"--log_file=" + QDir::toNativeSeparators(QDir(runDir).filePath("tekken6.log")),
+		"--fullscreen=" + QString(m_fullscreen ? "true" : "false")
+	};
+#if defined(_WIN32)
+	args << tearingArg() << "--async_shader_compilation=true" << renderTargetArg();
+#else
+	args << "--async_shader_compilation=true";
+#endif
+	args << QString("--draw_resolution_scale_x=%1").arg(m_resScale)
+	     << QString("--draw_resolution_scale_y=%1").arg(m_resScale);
+#if defined(_WIN32)
+	args << "--d3d12_adapter=" + QString::number(gpuIndex());
+#endif
+	return args + inputArgs();
 }
 
 void Launcher::prelaunch()
@@ -160,11 +176,18 @@ void Launcher::prelaunch()
 	if (g_leftoverGames)
 		appendGameLog(QString("ended %1 game process(es) left by an earlier launcher at start").arg(std::exchange(g_leftoverGames, 0)));
 	refreshGpu();
+#if defined(_WIN32)
 	if (!showParked())
 		m_game->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* a) {
 			a->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
 			a->startupInfo->wShowWindow = SW_HIDE;
 		});
+#else
+	m_game->setChildProcessModifier([] {
+		::prctl(PR_SET_PDEATHSIG, SIGTERM);
+		if (::getppid() == 1) ::_exit(1);
+	});
+#endif
 	connect(m_game, &QProcess::finished, this, [this](int code) {
 		const bool inMatch = m_inMatch, failed = m_startFailed, oppGone = m_oppGone;
 		// into the game's own log (it goes with "Send the game's log"): a crash shows as "ended by itself" with its code
@@ -239,6 +262,7 @@ void Launcher::toFront()
 {
 	showNormal();
 	raise();
+#if defined(_WIN32)
 	const HWND me = reinterpret_cast<HWND>(winId());
 	const HWND fg = GetForegroundWindow();
 	const DWORD fgThread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0, myThread = GetCurrentThreadId();
@@ -247,6 +271,7 @@ void Launcher::toFront()
 	SetActiveWindow(me);
 	if (attach)
 		AttachThreadInput(myThread, fgThread, FALSE);
+#endif
 	activateWindow();
 }
 
@@ -261,6 +286,8 @@ void Launcher::showGameWindows(bool show)
 // --fullscreen did not take for a window started hidden)
 void Launcher::makeFullscreen(HWND w)
 {
+#if defined(_WIN32)
+
 	const LONG_PTR style = GetWindowLongPtrW(w, GWL_STYLE);
 	if ((style & WS_POPUP) && !(style & WS_CAPTION))
 		return;
@@ -271,10 +298,15 @@ void Launcher::makeFullscreen(HWND w)
 	SetWindowLongPtrW(w, GWL_EXSTYLE, GetWindowLongPtrW(w, GWL_EXSTYLE) & ~(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE));
 	const RECT& r = mi.rcMonitor;
 	SetWindowPos(w, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+#else
+	Q_UNUSED(w);
+#endif
 }
 
 void Launcher::showWindowsOf(DWORD gamePid, bool show, bool fullscreen)
 {
+#if defined(_WIN32)
+
 	struct Ctx { DWORD pid; bool show; bool full; } ctx{gamePid, show, fullscreen};
 	EnumWindows([](HWND w, LPARAM l) -> BOOL {
 		const Ctx& c = *reinterpret_cast<Ctx*>(l);
@@ -301,6 +333,12 @@ void Launcher::showWindowsOf(DWORD gamePid, bool show, bool fullscreen)
 		}
 		return TRUE;
 	}, reinterpret_cast<LPARAM>(&ctx));
+#else
+	// The ReXGlue Vulkan window owns its fullscreen lifecycle on Linux.
+	Q_UNUSED(gamePid);
+	Q_UNUSED(show);
+	Q_UNUSED(fullscreen);
+#endif
 }
 
 // the game stands at the hold point
@@ -647,8 +685,12 @@ QString Launcher::tearingArg() const
 // RTV there; real Windows keeps ROV (the shipped pipeline storage is ROV only). Not a supported platform.
 bool Launcher::underWine()
 {
+#if defined(_WIN32)
 	static const bool wine = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "wine_get_version") != nullptr;
 	return wine;
+#else
+	return false;
+#endif
 }
 
 QString Launcher::renderTargetArg()

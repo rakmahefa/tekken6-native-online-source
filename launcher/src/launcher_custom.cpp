@@ -1,6 +1,11 @@
 // Tekken 6 Native Online launcher - Costumes and custom looks.
 
 #include "launcher.h"
+#if !defined(_WIN32)
+#include <signal.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 int Launcher::costume(int index) const
 {
@@ -107,10 +112,17 @@ void Launcher::startCustomize()
 	m_customize->setProgram(gameExe());
 	m_customize->setArguments(gameArgs(user, runDir));
 	// hidden through the boot and the menus; shown when the character's Customize screen is there
+#if defined(_WIN32)
 	m_customize->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* a) {
 		a->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
 		a->startupInfo->wShowWindow = SW_HIDE;
 	});
+#else
+	m_customize->setChildProcessModifier([] {
+		::prctl(PR_SET_PDEATHSIG, SIGTERM);
+		if (::getppid() == 1) ::_exit(1);
+	});
+#endif
 	m_customizeShown = false;
 	connect(m_customize, &QProcess::finished, this, [this](int code) {
 		if (!m_customize)

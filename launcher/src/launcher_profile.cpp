@@ -116,7 +116,7 @@ QWidget* Launcher::buildProfile()
 	pHistory->addLayout(m_historyBox);
 	pHistory->addStretch();
 	refreshHistory();
-	pProfile->addLayout(settingRow(T("Account"), {text(m_name, "h3")}));
+	pProfile->addLayout(settingRow(T("Account"), {text(m_name.trimmed().isEmpty() ? T("Not logged in") : m_name, "h3")}));
 	m_profileStats = hintText(QString());
 	pProfile->addLayout(settingRow(T("Stats"), {m_profileStats}));
 	auto* chars = charGrid(m_char, [this](int i) { setChar(i); });

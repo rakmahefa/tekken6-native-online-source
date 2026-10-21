@@ -4,6 +4,7 @@
 
 // A crash of the launcher -> launcher_crash.txt next to it: exception, faulting module + offset and the stack with
 // symbols (the PDB next to the exe when present). Players can send it with their report.
+#if defined(_WIN32)
 static LONG WINAPI crashFilter(EXCEPTION_POINTERS* ep)
 {
 	wchar_t exe[MAX_PATH]{};
@@ -60,6 +61,7 @@ static LONG WINAPI crashFilter(EXCEPTION_POINTERS* ep)
 	fclose(f);
 	return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 
 static int launcherMain(int argc, char** argv);
 
@@ -71,18 +73,33 @@ int main(int argc, char** argv)
 	}
 	catch (const std::exception& e)
 	{
+#if defined(_WIN32)
 		MessageBoxA(nullptr, e.what(), "Tekken 6 Online - unexpected error", MB_ICONERROR);
+#else
+		qCritical() << "Tekken 6 Online - unexpected error:" << e.what();
+#endif
 	}
 	catch (...)
 	{
+#if defined(_WIN32)
 		MessageBoxA(nullptr, "unknown exception", "Tekken 6 Online - unexpected error", MB_ICONERROR);
+#else
+		qCritical() << "Tekken 6 Online - unknown exception";
+#endif
 	}
 	return 1;
 }
 
 static int launcherMain(int argc, char** argv)
 {
+#if defined(_WIN32)
 	SetUnhandledExceptionFilter(crashFilter);
+#else
+	std::set_terminate([] {
+		std::fputs("Tekken 6 Online launcher terminated after an unhandled exception.\n", stderr);
+		std::abort();
+	});
+#endif
 	QApplication app(argc, argv);
 	app.setWindowIcon(QIcon(":/app.ico"));
 	const QStringList args = app.arguments();
@@ -91,6 +108,7 @@ static int launcherMain(int argc, char** argv)
 	// one launcher (and so one game) per PC; --instance N is the second launcher of the local tests
 	// After an update the old launcher starts the new one and quits: the new one waits up to 10 s for the old one to
 	// end before it says "already running" (v0.1.6: the restart after an update stopped at that message).
+#if defined(_WIN32)
 	SetLastError(0);
 	HANDLE mutex = CreateMutexW(nullptr, TRUE, g_instance == 1 ? L"Local\\Tekken6NativeOnlineLauncher" : nullptr);
 	bool taken = !(g_instance == 1 && GetLastError() == ERROR_ALREADY_EXISTS);
@@ -108,6 +126,20 @@ static int launcherMain(int argc, char** argv)
 		QMessageBox::information(nullptr, "Tekken 6 Online", "Tekken 6 Online is already running.");
 		return 0;
 	}
+#else
+	QLockFile instanceLock(QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+	                           .filePath("tekken6-native-online-launcher.lock"));
+	instanceLock.setStaleLockTime(0);
+	bool taken = g_instance != 1 || instanceLock.tryLock(0);
+	for (int i = 0; !taken && i < 40; ++i) {
+		QThread::msleep(250);
+		taken = instanceLock.tryLock(0);
+	}
+	if (!taken) {
+		QMessageBox::information(nullptr, "Tekken 6 Online", "Tekken 6 Online is already running.");
+		return 0;
+	}
+#endif
 	if (g_instance == 1)
 		g_leftoverGames = endLeftoverGames();
 	// Bai Jamjuree (SIL OFL, launcher/fonts) for the Eurostile of the Sketch design (2026-10-18; Eurostile itself may not
@@ -125,8 +157,10 @@ static int launcherMain(int argc, char** argv)
 	app.setStyleSheet(QString(kStyleTemplate).replace("%BODY%", g_body).replace("%DISPLAY%", g_display) +
 	                  (QFile::exists(":/art/ui/field.png") ? kArtStyle : ""));
 	Launcher w;
+#if defined(_WIN32)
 	BOOL dark = TRUE;
 	DwmSetWindowAttribute(reinterpret_cast<HWND>(w.winId()), 20, &dark, sizeof(dark));
+#endif
 	if (g_updateTest)
 	{
 		w.setAttribute(Qt::WA_DontShowOnScreen);

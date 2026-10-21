@@ -1,6 +1,10 @@
 // Tekken 6 Native Online launcher - This PC: CPU, graphics cards, machine id, region, local address, the match found sound.
 
 #include "system.h"
+#if !defined(_WIN32)
+#include <cpuid.h>
+#endif
+
 
 // "Match found" sound (user 2026-10-14), played by Windows while the launcher may be behind the practice game or
 // another program. Built in: a gong made by tools\make_match_sound.py (our own synthesis, sounds\match_found.wav).
@@ -8,6 +12,8 @@
 // play gives the built-in gong. Empty path = built-in.
 void playMatchFoundSound(const QString& file)
 {
+#if defined(_WIN32)
+
 	mciSendStringW(L"close t6match", nullptr, 0, nullptr);
 	PlaySoundW(nullptr, nullptr, 0);
 	if (!file.isEmpty() && QFileInfo::exists(file))
@@ -24,6 +30,33 @@ void playMatchFoundSound(const QString& file)
 	}();
 	if (!wav.isEmpty())
 		PlaySoundW(reinterpret_cast<LPCWSTR>(wav.constData()), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+
+#else
+	QString source = file;
+	if (source.isEmpty()) {
+		static const QString bundled = [] {
+			const QString path = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+			                         .filePath("tekken6-native-match-found.wav");
+			if (!QFile::exists(path)) {
+				QFile resource(":/sounds/match_found.wav");
+				if (resource.open(QIODevice::ReadOnly)) {
+					QFile output(path);
+					if (output.open(QIODevice::WriteOnly))
+						output.write(resource.readAll());
+				}
+			}
+			return QFile::exists(path) ? path : QString();
+		}();
+		source = bundled;
+	}
+	if (source.isEmpty() || !QFileInfo::exists(source))
+		return;
+	for (const QString& player : {QStringLiteral("paplay"), QStringLiteral("aplay")}) {
+		const QString program = QStandardPaths::findExecutable(player);
+		if (!program.isEmpty() && QProcess::startDetached(program, {source}))
+			return;
+	}
+#endif
 }
 
 // Instructions the game is compiled for (builder\compile.json: -march=x86-64-v2) that this processor lacks, "" = all
@@ -31,8 +64,15 @@ void playMatchFoundSound(const QString& file)
 // the launcher says so instead of building / starting a game that cannot run.
 QString cpuMissing()
 {
+#if defined(_WIN32)
 	int r[4] = {};
 	__cpuid(r, 1);
+#else
+	unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+	if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
+		return QStringLiteral("CPUID unavailable");
+	int r[4] = {static_cast<int>(eax), static_cast<int>(ebx), static_cast<int>(ecx), static_cast<int>(edx)};
+#endif
 	QStringList miss;
 	const auto need = [&](int bit, const char* name) {
 		if (!(r[2] & (1 << bit)))
@@ -49,6 +89,7 @@ QString cpuMissing()
 
 QList<Gpu> gpuList()
 {
+#if defined(_WIN32)
 	QList<Gpu> out;
 	IDXGIFactory1* f = nullptr;
 	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&f))))
@@ -63,10 +104,16 @@ QList<Gpu> gpuList()
 	}
 	f->Release();
 	return out;
+#else
+	// Vulkan adapter enumeration belongs to ReXGlue; D3D12 adapter indexes do
+	// not map to Linux devices. Let Vulkan select a supported device.
+	return {};
+#endif
 }
 
 QString autoGpu()
 {
+#if defined(_WIN32)
 	QString name;
 	IDXGIFactory6* f = nullptr;
 	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&f))))
@@ -81,13 +128,20 @@ QString autoGpu()
 	}
 	f->Release();
 	return name;
+#else
+	return QStringLiteral("Vulkan (automatic selection)");
+#endif
 }
 
 // this PC for the server (hash of the Windows machine GUID): no rated match between two launchers of one machine
 QString machineId()
 {
+#if defined(_WIN32)
 	const QSettings reg("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography", QSettings::Registry64Format);
 	const QByteArray guid = reg.value("MachineGuid").toString().toUtf8();
+#else
+	const QByteArray guid = QSysInfo::machineUniqueId();
+#endif
 	return guid.isEmpty() ? QString() : QString::fromLatin1(QCryptographicHash::hash("t6:" + guid, QCryptographicHash::Sha256).toHex().left(32));
 }
 

@@ -1,6 +1,11 @@
 // Tekken 6 Native Online launcher - Practice.
 
 #include "launcher.h"
+#if !defined(_WIN32)
+#include <signal.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 // ================= PRACTICE: a second instance of the game in Practice (own character) while the player waits for a
 // match; the parked online game stays as it is. It cannot be left (no START / BACK in it) and ends when a match starts.
@@ -203,10 +208,17 @@ void Launcher::startPractice()
 	m_practice->setProgram(gameExe());
 	m_practice->setArguments(gameArgs(user, runDir));
 	// boot and menus stay hidden like the online game: the window shows with the loading of the practice battle
+#if defined(_WIN32)
 	m_practice->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* a) {
 		a->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
 		a->startupInfo->wShowWindow = SW_HIDE;
 	});
+#else
+	m_practice->setChildProcessModifier([] {
+		::prctl(PR_SET_PDEATHSIG, SIGTERM);
+		if (::getppid() == 1) ::_exit(1);
+	});
+#endif
 	m_practiceShown = false;
 	connect(m_practice, &QProcess::finished, this, [this](int code) {
 		if (!m_practice)

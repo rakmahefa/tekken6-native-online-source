@@ -46,9 +46,15 @@ void StartHangWatch(const uint32_t* step) {
         else REXLOG_WARN("T6 hang watch: no interrupt callback running ({})", ms);
       }
       const auto readable = [](uint32_t a) {
+#if defined(_WIN32)
         MEMORY_BASIC_INFORMATION mbi{};
         return VirtualQuery(g_t6_membase + a, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT &&
                !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) && (mbi.Protect & (PAGE_READWRITE | PAGE_READONLY));
+#else
+        // Guest memory is mapped into a reserved host address space; only inspect
+        // known game data/heap ranges from the diagnostic walk on Linux.
+        return T6InGameRange(a, sizeof(uint32_t));
+#endif
       };
       const auto chain_of = [&](uint32_t sp) {
         std::string chain;

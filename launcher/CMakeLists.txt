@@ -8,6 +8,11 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 # ("tls://host:port") and T6_RELEASE_API (GitHub releases API url); official.qrc holds the pinned server certificate,
 # the rank pictures and the art. Without them the launcher builds with placeholders.
 include(${CMAKE_CURRENT_SOURCE_DIR}/official.cmake OPTIONAL)
+# The public Linux source has no private official.cmake. Give native Linux builds
+# a public release feed so the Patch notes dialog works out of the box.
+if(NOT WIN32 AND NOT T6_RELEASE_API)
+  set(T6_RELEASE_API "https://api.github.com/repos/rakmahefa/tekken6-native-online-source/releases/latest")
+endif()
 set(T6_SOURCES
     src/characters.cpp
     src/common.cpp
@@ -33,11 +38,21 @@ set(T6_SOURCES
     src/upnp.cpp
     src/versions.cpp
     src/widgets.cpp
-    launcher.qrc app.rc)
+    launcher.qrc)
+if(WIN32)
+  list(APPEND T6_SOURCES app.rc)
+endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/official.qrc AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ranks AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/art)
   list(APPEND T6_SOURCES official.qrc)
 endif()
-add_executable(t6_native_launcher WIN32 ${T6_SOURCES})
+if(WIN32)
+  add_executable(t6_native_launcher WIN32 ${T6_SOURCES})
+else()
+  add_executable(t6_native_launcher ${T6_SOURCES})
+endif()
+if(T6_VERSION)
+  target_compile_definitions(t6_native_launcher PRIVATE "T6_VERSION=\"${T6_VERSION}\"")
+endif()
 if(T6_SERVER)
   target_compile_definitions(t6_native_launcher PRIVATE "T6_SERVER=\"${T6_SERVER}\"")
 endif()
@@ -52,7 +67,12 @@ if(T6_DEV)
 else()
   set_target_properties(t6_native_launcher PROPERTIES OUTPUT_NAME "Tekken6 Native Online")
 endif()
-target_compile_options(t6_native_launcher PRIVATE /utf-8 /W3)
-target_link_libraries(t6_native_launcher PRIVATE Qt6::Widgets Qt6::Network dwmapi winhttp dxgi winmm dbghelp ws2_32)
-target_compile_options(t6_native_launcher PRIVATE /Zi)
-target_link_options(t6_native_launcher PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+if(WIN32)
+  target_compile_options(t6_native_launcher PRIVATE /utf-8 /W3 /Zi)
+  target_link_libraries(t6_native_launcher PRIVATE Qt6::Widgets Qt6::Network dwmapi winhttp dxgi winmm dbghelp ws2_32)
+  target_link_options(t6_native_launcher PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+else()
+  find_package(Threads REQUIRED)
+  target_compile_options(t6_native_launcher PRIVATE -Wall -Wextra -Wno-deprecated-declarations)
+  target_link_libraries(t6_native_launcher PRIVATE Qt6::Widgets Qt6::Network Threads::Threads ${CMAKE_DL_LIBS})
+endif()

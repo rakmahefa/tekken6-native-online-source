@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tekken 6 Native Online (Linux Test)
+Comment=Native Linux launcher; builds from the player's own Tekken 6 copy
+Exec=AppRun
+Icon=tekken6-native-online
+Terminal=false
+Categories=Game;
+StartupNotify=true

@@ -1,0 +1,76 @@
+name: Native Linux port smoke tests
+
+on:
+  push:
+    branches:
+      - feature/native-linux-build
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-port-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-posix-components:
+    name: Compile GGPO, XDVDFS and engine platform boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang cmake ninja-build
+
+      - name: Configure standalone Linux port tests
+        run: >-
+          cmake -S tests/linux-port -B build/linux-port -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile GGPO, XDVDFS and engine platform boundary
+        run: cmake --build build/linux-port --parallel 2
+
+      - name: Exercise POSIX memory compatibility wrappers
+        run: ./build/linux-port/t6_platform_smoke
+
+      - name: Validate Python builder syntax
+        run: |
+          python3 -m py_compile builder/build_native_linux.py tools/apply_rexglue_patches.py
+          python3 tests/test_linux_builder_incremental.py
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+  compile-linux-launcher:
+    name: Compile Qt launcher natively on Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools and Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang cmake ninja-build qt6-base-dev
+
+      - name: Configure native Qt launcher
+        run: >-
+          cmake -S launcher -B build/launcher-linux -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile native Qt launcher
+        run: cmake --build build/launcher-linux --parallel 2
+
+      - name: Check patch whitespace
+        run: git diff --check

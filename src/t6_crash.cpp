@@ -2,6 +2,7 @@
 
 #include "t6_netplay_internal.h"
 
+#if defined(_WIN32)
 // ---- Host crash report with the guest registers (any access violation in generated code) ----
 namespace t6np {
 LONG WINAPI T6CrashHandler(EXCEPTION_POINTERS* ep) {
@@ -43,3 +44,33 @@ struct T6CrashInstall {
   T6CrashInstall() { AddVectoredExceptionHandler(0, T6CrashHandler); }
 } g_t6_crash_install;
 }  // namespace t6np
+
+#else
+#include <csignal>
+#include <unistd.h>
+
+// Linux crash capture leaves the native core dump enabled. Do not invoke the
+// logger or allocate memory from a signal context.
+namespace t6np {
+namespace {
+void T6CrashSignal(int)
+{
+  static constexpr char message[] =
+      "Tekken 6 host process received a fatal signal; inspect the core dump for details.\n";
+  (void)::write(STDERR_FILENO, message, sizeof(message) - 1);
+}
+struct T6CrashInstall {
+  T6CrashInstall()
+  {
+    struct sigaction action {};
+    action.sa_handler = T6CrashSignal;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESETHAND;
+    sigaction(SIGSEGV, &action, nullptr);
+    sigaction(SIGABRT, &action, nullptr);
+    sigaction(SIGBUS, &action, nullptr);
+  }
+} g_t6_crash_install;
+}  // namespace
+}  // namespace t6np
+#endif

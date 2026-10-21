@@ -22,12 +22,25 @@ ServerAddr serverAddr()
 	return a;
 }
 
-// the certificate of our server (self-signed, server/tls): the only one a TLS connection accepts
+// The lobby server's leaf certificate is pinned exactly; never fall back to
+// accepting arbitrary certificates. Public builds can provide the maintainer's
+// private/test pin via T6_LOBBY_CERT without embedding it in the public tree.
 const QSslCertificate& pinnedCert()
 {
 	static const QSslCertificate cert = [] {
-		QFile f(":/tls/t6_cert.pem");
+		const QString overridePath = qEnvironmentVariable("T6_LOBBY_CERT").trimmed();
+		QFile f(overridePath.isEmpty() ? QStringLiteral(":/tls/t6_cert.pem") : overridePath);
 		return f.open(QIODevice::ReadOnly) ? QSslCertificate(&f, QSsl::Pem) : QSslCertificate();
 	}();
 	return cert;
+}
+
+bool serverConfigured()
+{
+	const QString srv = serverAddress();
+	if (srv.isEmpty() || srv == QStringLiteral("tls://lobby.example.com:7700"))
+		return false;
+	if (srv.startsWith(QStringLiteral("tls://")) && pinnedCert().isNull())
+		return false;
+	return true;
 }

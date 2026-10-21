@@ -10,12 +10,22 @@
 // after frames steps the state of the boundary before step `at` is loaded, and pass 2 replays the same inputs.
 void T6FrameHook(PPCRegister& r3) {
   T6SpikeFrameEnd();
+#if defined(_WIN32)
   if (static const bool prof = T6Env("T6_PROFILE") != nullptr; prof && !g_prof_main.load()) {
     HANDLE h = nullptr;
     DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &h, THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0);
     g_prof_main.store(h);
     std::thread(ProfileThread).detach();
   }
+#else
+  if (T6Env("T6_PROFILE")) {
+    static const bool reported = [] {
+      REXLOG_WARN("T6 profile: suspended-thread sampling is currently available only on Windows");
+      return true;
+    }();
+    (void)reported;
+  }
+#endif
   (void)r3;
   if (!g_t6_membase) return;
   PracticePace();

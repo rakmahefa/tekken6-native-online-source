@@ -2,14 +2,36 @@
 
 #include "files.h"
 
-// Root: the folder with build\tekken6.exe (project) or with tekken6.exe (package)
+// Root: the folder with the native build, source tree and player-side builder.
 QString root()
 {
+	// AppImage's SquashFS mount is read-only. AppRun stages the source tree and
+	// build workspace in the user's writable data directory and passes it here.
+	const QString portRoot = qEnvironmentVariable("T6_PORT_ROOT").trimmed();
+	if (!portRoot.isEmpty()) {
+		const QDir candidate(portRoot);
+#if defined(_WIN32)
+		const bool valid = QFile::exists(candidate.filePath("builder/build_native.py"));
+#else
+		const bool valid = QFile::exists(candidate.filePath("builder/build_native_linux.py"));
+#endif
+		if (valid)
+			return QFileInfo(candidate.absolutePath()).canonicalFilePath();
+	}
+
 	QDir d(QCoreApplication::applicationDirPath());
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 4; i++)
 	{
-		if (QFile::exists(d.filePath("build/tekken6.exe")) || QFile::exists(d.filePath("tekken6.exe")) ||
-		    QFile::exists(d.filePath("builder/build_native.py")))
+#if defined(_WIN32)
+		const bool game = QFile::exists(d.filePath("build/tekken6.exe")) ||
+		                  QFile::exists(d.filePath("tekken6.exe")) ||
+		                  QFile::exists(d.filePath("builder/build_native.py"));
+#else
+		const bool game = QFile::exists(d.filePath("build/tekken6")) ||
+		                  QFile::exists(d.filePath("tekken6")) ||
+		                  QFile::exists(d.filePath("builder/build_native_linux.py"));
+#endif
+		if (game)
 			return d.absolutePath();
 		if (!d.cdUp())
 			break;
@@ -22,13 +44,21 @@ QString rootFile(const QString& rel)
 	return QDir(root()).filePath(rel);
 }
 
-// the game built from the player's copy (native\) first; build\ = development tree
+// The native player build takes precedence over the development binary.
 QString gameExe()
 {
+#if defined(_WIN32)
 	for (const char* rel : {"native/tekken6.exe", "build/tekken6.exe", "tekken6.exe"})
+#else
+	for (const char* rel : {"native/tekken6", "build/tekken6", "tekken6"})
+#endif
 		if (QFile::exists(rootFile(rel)))
 			return rootFile(rel);
+#if defined(_WIN32)
 	return rootFile("native/tekken6.exe");
+#else
+	return rootFile("native/tekken6");
+#endif
 }
 
 QString gameDataRoot()
@@ -50,6 +80,7 @@ QString builderVersion()
 
 GameNeed gameNeed()
 {
+#if defined(_WIN32)
 	if (!QFile::exists(rootFile("native/tekken6.exe")))
 		return QFile::exists(rootFile("build/tekken6.exe")) || QFile::exists(rootFile("tekken6.exe")) ? GameOk : GameBuild;
 	const bool data = QFile::exists(rootFile("native/game/default.xex")) || QFile::exists(rootFile("native/game/Default.xex"));
@@ -61,6 +92,17 @@ GameNeed gameNeed()
 	if (!sha.isEmpty() && firstLine("native/prebuilt.sha") != sha)
 		return objs ? GameRelink : data ? GameUpdate : GameBuild;
 	return GameOk;
+#else
+	if (!QFile::exists(rootFile("native/tekken6")))
+		return QFile::exists(rootFile("build/tekken6")) || QFile::exists(rootFile("tekken6")) ? GameOk : GameBuild;
+	const bool data = QFile::exists(rootFile("native/game/default.xex")) || QFile::exists(rootFile("native/game/Default.xex"));
+	if (!data)
+		return GameBuild;
+	const QString v = builderVersion();
+	if (!v.isEmpty() && firstLine("native/build.version") != v)
+		return GameUpdate;
+	return GameOk;
+#endif
 }
 
 QSettings settings()
@@ -99,8 +141,13 @@ QString buildHash()
 	};
 	const QString bin = QFileInfo(gameExe()).absolutePath();
 	add("exe", gameExe());
+#if defined(_WIN32)
 	for (const char* dll : {"rexruntime.dll", "rexgpu-xenos.dll"})
 		add(dll, QDir(bin).filePath(dll));
+#else
+	for (const char* lib : {"librexruntime.so", "librexgpu-xenos.so"})
+		add(lib, QDir(bin).filePath(lib));
+#endif
 	add("menu", rootFile("tools/menu_vs.bin"));
 	add("exclude", rootFile("tools/netplay_exclude.txt"));
 	for (const QString& rel : filesUnder(profileDir()))

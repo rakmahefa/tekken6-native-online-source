@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PAYLOAD="$APPDIR/usr/share/tekken6-native-online"
+BUNDLE="$PAYLOAD/workspace.tar.gz"
+VERSION_FILE="$PAYLOAD/source-version"
+
+DATA_HOME="${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}"
+WORKSPACE_BASE="$DATA_HOME/tekken6-native-online"
+WORKSPACE="$WORKSPACE_BASE/workspace"
+STAMP="$WORKSPACE/.t6-appimage-source-version"
+
+if [ ! -f "$BUNDLE" ] || [ ! -f "$VERSION_FILE" ]; then
+    echo "Tekken 6 Native Online: AppImage source payload is missing." >&2
+    exit 1
+fi
+
+BUNDLE_VERSION="$(cat "$VERSION_FILE")"
+CURRENT_VERSION=""
+if [ -f "$STAMP" ]; then
+    CURRENT_VERSION="$(cat "$STAMP")"
+fi
+
+if [ ! -f "$WORKSPACE/builder/build_native_linux.py" ] || [ "$CURRENT_VERSION" != "$BUNDLE_VERSION" ]; then
+    mkdir -p "$WORKSPACE_BASE" "$WORKSPACE"
+    STAGING="$(mktemp -d "$WORKSPACE_BASE/.workspace-update.XXXXXX")"
+    cleanup() { rm -rf "$STAGING"; }
+    trap cleanup EXIT HUP INT TERM
+    if ! tar -xzf "$BUNDLE" -C "$STAGING"; then
+        echo "Tekken 6 Native Online: unable to extract the Linux source workspace." >&2
+        exit 1
+    fi
+    # The source bundle deliberately omits mutable paths (native game/build,
+    # generated code, user settings and runs), so copying a new source version
+    # updates code while preserving the player's local game and cache.
+    cp -a "$STAGING/." "$WORKSPACE/"
+    printf '%s\n' "$BUNDLE_VERSION" > "$STAMP"
+    cleanup
+    trap - EXIT HUP INT TERM
+fi
+
+export T6_PORT_ROOT="$WORKSPACE"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$APPDIR/usr/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$APPDIR/usr/plugins/platforms"
+
+exec "$APPDIR/usr/bin/tekken6-native-online" "$@"

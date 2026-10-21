@@ -14,8 +14,9 @@ QString vkName(int vk)
 {
 	if (!vk)
 		return QString::fromUtf8("–");
+#if defined(_WIN32)
 	UINT sc = MapVirtualKeyW(UINT(vk), MAPVK_VK_TO_VSC);
-	switch (vk)  // extended keys: the name of the gray block, not of the numpad
+	switch (vk)
 	{
 	case VK_LEFT: case VK_UP: case VK_RIGHT: case VK_DOWN: case VK_PRIOR: case VK_NEXT: case VK_END: case VK_HOME:
 	case VK_INSERT: case VK_DELETE: case VK_DIVIDE: case VK_NUMLOCK: case VK_RCONTROL: case VK_RMENU:
@@ -28,6 +29,24 @@ QString vkName(int vk)
 	if (GetKeyNameTextW(static_cast<LONG>(sc) << 16, name, 64) > 0)
 		return QString::fromWCharArray(name);
 	return QString("VK %1").arg(vk);
+#else
+	if (vk >= 'A' && vk <= 'Z') return QString(QChar(vk));
+	if (vk >= '0' && vk <= '9') return QString(QChar(vk));
+	switch (vk) {
+	case VK_RETURN: return QStringLiteral("Enter");
+	case VK_BACK: return QStringLiteral("Backspace");
+	case VK_ESCAPE: return QStringLiteral("Escape");
+	case 0x20: return QStringLiteral("Space");
+	case 0x09: return QStringLiteral("Tab");
+	case 0x25: return QStringLiteral("Left");
+	case 0x26: return QStringLiteral("Up");
+	case 0x27: return QStringLiteral("Right");
+	case 0x28: return QStringLiteral("Down");
+	default: break;
+	}
+	if (vk >= 0x70 && vk <= 0x7B) return QString("F%1").arg(vk - 0x6F);
+	return QString("Key %1").arg(vk);
+#endif
 }
 
 // T6_KEYMAP of the game for the Custom layout
@@ -43,6 +62,7 @@ QString keyMap()
 // WinMM joysticks that are connected: (index, name)
 QList<QPair<int, QString>> mmDevices()
 {
+#if defined(_WIN32)
 	QList<QPair<int, QString>> out;
 	for (UINT i = 0; i < joyGetNumDevs() && i < 16; i++)
 	{
@@ -52,6 +72,9 @@ QList<QPair<int, QString>> mmDevices()
 			out.push_back({int(i), QString::fromWCharArray(caps.szPname)});
 	}
 	return out;
+#else
+	return {};
+#endif
 }
 
 PadPanel::PadPanel() { setFixedSize(980, 470); }
@@ -93,11 +116,47 @@ void PadPanel::paintEvent(QPaintEvent*)
 
 KeyGrab::KeyGrab(QObject* parent, std::function<void(int)> done) : QObject(parent), m_done(std::move(done)) {}
 
+#if !defined(_WIN32)
+static int portableVirtualKey(int key)
+{
+	if ((key >= Qt::Key_A && key <= Qt::Key_Z) ||
+	    (key >= Qt::Key_0 && key <= Qt::Key_9))
+		return key;
+	if (key >= Qt::Key_F1 && key <= Qt::Key_F12)
+		return 0x70 + (key - Qt::Key_F1);
+	switch (key) {
+	case Qt::Key_Return: case Qt::Key_Enter: return VK_RETURN;
+	case Qt::Key_Backspace: return VK_BACK;
+	case Qt::Key_Escape: return VK_ESCAPE;
+	case Qt::Key_Tab: return 0x09;
+	case Qt::Key_Space: return 0x20;
+	case Qt::Key_Left: return 0x25;
+	case Qt::Key_Up: return 0x26;
+	case Qt::Key_Right: return 0x27;
+	case Qt::Key_Down: return 0x28;
+	case Qt::Key_Home: return 0x24;
+	case Qt::Key_End: return 0x23;
+	case Qt::Key_PageUp: return 0x21;
+	case Qt::Key_PageDown: return 0x22;
+	case Qt::Key_Insert: return 0x2D;
+	case Qt::Key_Delete: return 0x2E;
+	case Qt::Key_Shift: return 0x10;
+	case Qt::Key_Control: return 0x11;
+	case Qt::Key_Alt: return 0x12;
+	default: return key > 0 && key < 0x100 ? key : 0;
+	}
+}
+#endif
+
 bool KeyGrab::eventFilter(QObject*, QEvent* e)
 {
 	if (e->type() != QEvent::KeyPress || !m_done)
 		return false;
+#if defined(_WIN32)
 	const int vk = int(static_cast<QKeyEvent*>(e)->nativeVirtualKey());
+#else
+	const int vk = portableVirtualKey(static_cast<QKeyEvent*>(e)->key());
+#endif
 	auto done = std::move(m_done);
 	m_done = nullptr;
 	done(vk);

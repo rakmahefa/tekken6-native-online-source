@@ -101,7 +101,11 @@ Launcher::~Launcher()
 	}
 	catch (...)  // (a destructor does not throw: the process ends right after it)
 	{
+#if defined(_WIN32)
 		OutputDebugStringW(L"Tekken 6 Online launcher: exception while closing\n");
+#else
+		qWarning() << "Tekken 6 Online launcher: exception while closing";
+#endif
 	}
 }
 
@@ -481,7 +485,8 @@ void Launcher::showPage(Page p)
 {
 	if (p != PageSettings)
 		applyControls();
-	if (!m_authed)
+	// Settings and local profile preferences remain available while offline; only matchmaking modes require login.
+	if (!m_authed && p != PageSettings && p != PageProfile)
 		p = PageLogin;
 	// in a lobby / match the VS screen stays in front (the profile and the settings can still be opened)
 	const bool aside = p == PageProfile || p == PageSettings;
@@ -510,8 +515,8 @@ void Launcher::refreshAll()
 	m_pillBadge->setPixmap(pillIcon.isNull() ? QPixmap() : pillIcon.scaled(75, 36, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 	m_pillBadge->setVisible(!pillIcon.isNull());
 	m_profileBtn->setFixedSize(m_profileBtn->layout()->sizeHint());  // (the button has no text of its own)
-	m_profileBtn->setToolTip(m_authed && !m_guest ? rankName() : QString());
-	m_profileBtn->setEnabled(m_authed);
+	m_profileBtn->setToolTip(!m_authed ? T("Local profile (offline account data)") : m_guest ? T("Guest profile") : rankName());
+	m_profileBtn->setEnabled(true);
 	fitNav();  // (the name changes the room the nav has)
 	refreshCostume();  // (the Customize look button follows the game's state)
 	m_status->setText((m_online ? (m_onlineCount > 0 ? T("● %1 online").arg(m_onlineCount) : T("● online"))
@@ -525,18 +530,25 @@ void Launcher::refreshAll()
 		// a stored login: no form while the launcher connects and signs in by itself
 		const bool waiting = !m_authed && !m_session.isEmpty();
 		const QString who = settings().value("account").toString();
+		const bool offlineNotice = !serverConfigured();
 		m_loginForm->setVisible(!waiting);
-		m_loginWait->setVisible(waiting);
-		m_loginWaitSub->setVisible(waiting);
-		m_loginWait->setText(m_connected ? (who.isEmpty() ? T("Signing in…") : T("Signing in as %1…").arg(who)) : T("Connecting to the server…"));
+		// Show the missing-server explanation above the form even when no saved session exists.
+		m_loginWait->setVisible(waiting || offlineNotice);
+		m_loginWaitSub->setVisible(waiting || offlineNotice);
+		const bool lobbyReady = serverConfigured();
+		m_loginWait->setText(m_connected ? (who.isEmpty() ? T("Signing in…") : T("Signing in as %1…").arg(who))
+		                                 : lobbyReady ? T("Connecting to the server…") : T("Offline test build"));
 		m_loginWaitSub->setText(m_connected ? T("One moment.")
-		                                    : T("The launcher logs you in by itself as soon as the server answers. If this stays, check your internet connection."));
+		                                    : !lobbyReady ? T("This public build has no configured lobby endpoint and pinned TLS certificate. Online login is unavailable; Settings and local game building work offline.")
+		                                                  : T("The launcher logs you in as soon as the server answers. If this stays, check the endpoint, certificate and internet connection."));
 	}
-	// nothing to go to while not logged in: the page stays on the login anyway
+	// Matchmaking pages require authentication, but offline users must still be able to configure/build locally.
 	for (auto [k, b] : m_nav.asKeyValueRange())
 		b->setEnabled(m_authed);
-	m_settingsNav->setEnabled(m_authed);
-	if (m_guest || !m_authed)
+	m_settingsNav->setEnabled(true);
+	if (!m_authed)
+		m_profileStats->setText(T("Online rank and account statistics require a lobby connection. Local preferences remain available here."));
+	else if (m_guest)
 		m_profileStats->setText(QString());
 	else
 	{

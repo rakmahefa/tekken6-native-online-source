@@ -1,6 +1,13 @@
 // Tekken 6 Native Online launcher - Controller and keyboard settings, the controller on the launcher's pages.
 
 #include "launcher.h"
+#if !defined(_WIN32)
+#include <array>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 // ================= CONTROLS
 // Settings -> CONTROLLER (which controller, vibration; a stick: its device and which of its buttons is which
@@ -8,9 +15,13 @@
 void Launcher::buildControls(QVBoxLayout* setup, QVBoxLayout* v)
 {
 	auto s = settings();
+#if defined(_WIN32)
 	auto* backend = choiceBox({{T("Gamepad – Xbox, DualShock 4, DualSense, Switch Pro…"), "sdl"},
 	                           {T("Joystick / arcade stick (WinMM, its buttons set below)"), "mmjoystick"}},
 	                          padBackend());
+#else
+	auto* backend = choiceBox({{T("Gamepad (SDL – Xbox, PlayStation, Switch Pro…)"), "sdl"}}, padBackend());
+#endif
 	setup->addLayout(settingRow(T("Controller"), {backend, hintText(T("Playing on an arcade stick and your inputs don't work? Try the Gamepad setting for now."))}));
 	setup->addLayout(settingRow(T("Vibration"), {gameToggle(&m_vibration, "vibration")}));  // (user 2026-10-12)
 
@@ -119,7 +130,11 @@ void Launcher::addPair(QGridLayout* g, int n, const QString& label, QWidget* fie
 
 QString Launcher::padBackend() const
 {
+#if defined(_WIN32)
 	return settings().value("pad_backend", "mmjoystick").toString() == "sdl" ? "sdl" : "mmjoystick";
+#else
+	return "sdl";
+#endif
 }
 
 QString Launcher::mmBinding(const QString& key, const QString& def)
@@ -130,6 +145,8 @@ QString Launcher::mmBinding(const QString& key, const QString& def)
 // first press on the joystick within 5 s: a button, a POV direction or an axis half past 75 %
 void Launcher::captureMm(QPushButton* b, const QString& key, const QString& def, int dev)
 {
+#if defined(_WIN32)
+
 	if (m_capture)
 		return;
 	JOYINFOEX base{sizeof(base), JOY_RETURNALL};
@@ -187,6 +204,16 @@ void Launcher::captureMm(QPushButton* b, const QString& key, const QString& def,
 			bp->setText(mmBinding(key, def));
 	});
 	t->start(20);
+
+#else
+	Q_UNUSED(key);
+	Q_UNUSED(def);
+	Q_UNUSED(dev);
+	if (b) {
+		b->setText(T("WinMM binding is only available on Windows."));
+		QTimer::singleShot(2000, b, [b, key, def] { b->setText(mmBinding(key, def)); });
+	}
+#endif
 }
 
 // next key press (anywhere in the launcher) becomes the key of this action; Escape keeps the old one
@@ -284,6 +311,7 @@ bool Launcher::padDown(PadKind kind)
 		return (QDateTime::currentMSecsSinceEpoch() / 1500) % 2 == 1;
 	if (kind != PadConfirm && qEnvironmentVariableIsSet("T6_TEST_PAD"))
 		return false;
+#if defined(_WIN32)
 	// XInput, loaded at run time (no import: the launcher starts on a PC without it)
 	struct XState { DWORD packet; WORD buttons; BYTE lt, rt; SHORT lx, ly, rx, ry; };
 	using GetState = DWORD(WINAPI*)(DWORD, XState*);
@@ -332,6 +360,66 @@ bool Launcher::padDown(PadKind kind)
 		if (kind == PadCancel ? down(i, 3) : kind == PadStage ? down(i, 4) : down(i, 1) || down(i, 2))
 			return true;
 	return false;
+#else
+	// Read Linux evdev gamepad button states without depending on a particular
+	// controller vendor or requiring a build-time SDL/QtGamepad dependency.
+	// Desktop session ACLs normally grant the active user access to its input
+	// devices; inaccessible devices are skipped cleanly.
+	constexpr size_t wordBits = sizeof(unsigned long) * 8;
+	constexpr size_t eventWords = (EV_MAX + wordBits) / wordBits;
+	constexpr size_t keyWords = (KEY_MAX + wordBits) / wordBits;
+	const auto bitSet = [=](const unsigned long* bits, unsigned int bit) {
+		return (bits[bit / wordBits] & (1UL << (bit % wordBits))) != 0;
+	};
+
+	static QHash<QString, int> gamepads;
+	static qint64 lastScanMs = 0;
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if (now - lastScanMs >= 2000)
+	{
+		lastScanMs = now;
+		for (auto it = gamepads.begin(); it != gamepads.end(); ++it)
+			::close(it.value());
+		gamepads.clear();
+
+		QDir inputDir(QStringLiteral("/dev/input"));
+		for (const QString& name : inputDir.entryList({QStringLiteral("event*")}, QDir::System | QDir::Files))
+		{
+			const QString path = inputDir.filePath(name);
+			const int fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+			if (fd < 0)
+				continue;
+
+			std::array<unsigned long, eventWords> eventBits{};
+			std::array<unsigned long, keyWords> keyCapabilities{};
+			if (::ioctl(fd, EVIOCGBIT(0, sizeof(eventBits)), eventBits.data()) < 0 ||
+			    !bitSet(eventBits.data(), EV_KEY) ||
+			    ::ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keyCapabilities)), keyCapabilities.data()) < 0 ||
+			    !bitSet(keyCapabilities.data(), BTN_SOUTH) ||
+			    !bitSet(keyCapabilities.data(), BTN_EAST))
+			{
+				::close(fd);
+				continue;
+			}
+			gamepads.insert(path, fd);
+		}
+	}
+
+	for (auto it = gamepads.cbegin(); it != gamepads.cend(); ++it)
+	{
+		std::array<unsigned long, keyWords> pressed{};
+		if (::ioctl(it.value(), EVIOCGKEY(sizeof(pressed)), pressed.data()) < 0)
+			continue;
+		if (kind == PadCancel && bitSet(pressed.data(), BTN_EAST))
+			return true;
+		if (kind == PadStage && bitSet(pressed.data(), BTN_NORTH))
+			return true;
+		if (kind == PadConfirm &&
+		    (bitSet(pressed.data(), BTN_SOUTH) || bitSet(pressed.data(), BTN_START)))
+			return true;
+	}
+	return false;
+#endif
 }
 
 // Every 50 ms: what happens by itself after a match, and the controller's confirm button.

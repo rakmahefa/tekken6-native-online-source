@@ -296,8 +296,13 @@ UdpProtocol::HandlesMsg(sockaddr_in &from,
    if (!_udp) {
       return false;
    }
+#if defined(_WINDOWS)
    return _peer_addr.sin_addr.S_un.S_addr == from.sin_addr.S_un.S_addr &&
           _peer_addr.sin_port == from.sin_port;
+#else
+   return _peer_addr.sin_addr.s_addr == from.sin_addr.s_addr &&
+          _peer_addr.sin_port == from.sin_port;
+#endif
 }
 
 void

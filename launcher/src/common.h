@@ -3,6 +3,7 @@
 
 #include <QtWidgets>
 #include <QtNetwork>
+#if defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -13,6 +14,48 @@
 #include <mmsystem.h>
 #include <dbghelp.h>
 #include <tlhelp32.h>
+#else
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+using DWORD = quint32;
+using ULONGLONG = quint64;
+using WORD = quint16;
+using BYTE = quint8;
+using LONG = qint32;
+using HWND = void*;
+using HANDLE = void*;
+using HMODULE = void*;
+using LPARAM = qintptr;
+using WPARAM = quintptr;
+using UINT = unsigned int;
+using SHORT = qint16;
+#ifndef VK_BACK
+#define VK_BACK 0x08
+#define VK_RETURN 0x0D
+#define VK_ESCAPE 0x1B
+#endif
+using SOCKET = int;
+#ifndef INVALID_SOCKET
+#define INVALID_SOCKET (-1)
+#endif
+#ifndef SOCKET_ERROR
+#define SOCKET_ERROR (-1)
+#endif
+#ifndef closesocket
+#define closesocket close
+#endif
+inline quint64 GetTickCount64()
+{
+  return static_cast<quint64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+#endif
 #include <algorithm>
 #include <cmath>
 #include <atomic>
@@ -20,7 +63,10 @@
 #include <mutex>
 #include <thread>
 
-inline const char* const kVersion = "2.3.0";  // v2.0.1: start-of-match save stall, rematch card + same stage, loser's random stage (ranked), blur / vibration options
+#ifndef T6_VERSION
+#define T6_VERSION "2.3.0"
+#endif
+inline const char* const kVersion = T6_VERSION;  // AppImage test builds inject their published version; official builds keep 2.3.0.
 // The lobby server and the release repository of the official build (CMake T6_SERVER / T6_RELEASE_API, set by the
 // untracked launcher/official.cmake); T6_LOBBY_SERVER / T6_UPDATE_API override them for local tests
 #ifndef T6_SERVER
