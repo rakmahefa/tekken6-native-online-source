@@ -96,14 +96,16 @@ QStringList Launcher::gameArgs(const QString& user, const QString& runDir) const
 		"--user_data_root=" + QDir::toNativeSeparators(user),
 		"--cache_root=" + QDir::toNativeSeparators(QDir(runDir).filePath("cache")),
 		"--log_file=" + QDir::toNativeSeparators(QDir(runDir).filePath("tekken6.log")),
-		"--fullscreen=" + QString(m_fullscreen ? "true" : "false"),
-		"--async_shader_compilation=true",
-		QString("--draw_resolution_scale_x=%1").arg(m_resScale),
-		QString("--draw_resolution_scale_y=%1").arg(m_resScale)
+		"--fullscreen=" + QString(m_fullscreen ? "true" : "false")
 	};
 #if defined(_WIN32)
-	args.insert(5, tearingArg());
-	args.insert(7, renderTargetArg());
+	args << tearingArg() << "--async_shader_compilation=true" << renderTargetArg();
+#else
+	args << "--async_shader_compilation=true";
+#endif
+	args << QString("--draw_resolution_scale_x=%1").arg(m_resScale)
+	     << QString("--draw_resolution_scale_y=%1").arg(m_resScale);
+#if defined(_WIN32)
 	args << "--d3d12_adapter=" + QString::number(gpuIndex());
 #endif
 	return args + inputArgs();
