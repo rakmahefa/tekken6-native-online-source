@@ -167,11 +167,14 @@ jobs:
           retention-days: 14
 
   publish-prerelease:
-    name: Publish GitHub prerelease (tag or explicit manual dispatch)
+    name: Publish GitHub prerelease (tag, marked push, or explicit manual dispatch)
     needs: build-appimage
     if: >-
       startsWith(github.ref, 'refs/tags/linux-v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish_prerelease)
+      || (github.event_name == 'push'
+          && github.ref == 'refs/heads/feature/linux-appimage-prerelease'
+          && contains(github.event.head_commit.message, '[publish-prerelease]'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -189,12 +192,22 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.release_tag }}
+          EVENT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
-          else
+          elif [[ "$EVENT_REF" =~ ^linux-v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
             tag="$EVENT_REF"
+          elif [ "$EVENT_NAME" = "push" ] \
+              && [ "$EVENT_REF" = "feature/linux-appimage-prerelease" ] \
+              && [[ "$EVENT_MESSAGE" == *"[publish-prerelease]"* ]]; then
+            # A deliberate marker commit publishes one versioned preview. The
+            # workflow run number makes each marked push produce a unique tag.
+            tag="linux-v0.1.0-preview.${GITHUB_RUN_NUMBER}"
+          else
+            echo "No valid preview tag can be inferred from ref $EVENT_REF" >&2
+            exit 1
           fi
           if ! [[ "$tag" =~ ^linux-v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
             echo "Refusing non-preview tag: $tag" >&2
@@ -207,9 +220,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
           APPIMAGE: ${{ needs.build-appimage.outputs.appimage_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$EVENT_NAME" = "push" ] && [ "$EVENT_REF" = "$TAG" ]; then
+              echo "Release $TAG already exists; this is the follow-up workflow triggered by its tag. Skipping duplicate publication."
+              exit 0
+            fi
             echo "Release $TAG already exists; refusing to overwrite it." >&2
             exit 1
           fi
