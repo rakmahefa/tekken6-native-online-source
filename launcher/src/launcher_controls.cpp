@@ -1,6 +1,12 @@
 // Tekken 6 Native Online launcher - Controller and keyboard settings, the controller on the launcher's pages.
 
 #include "launcher.h"
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 // ================= CONTROLS
 // Settings -> CONTROLLER (which controller, vibration; a stick: its device and which of its buttons is which
@@ -354,7 +360,63 @@ bool Launcher::padDown(PadKind kind)
 			return true;
 	return false;
 #else
-	Q_UNUSED(kind);
+	// Read Linux evdev gamepad button states without depending on a particular
+	// controller vendor or requiring a build-time SDL/QtGamepad dependency.
+	// Desktop session ACLs normally grant the active user access to its input
+	// devices; inaccessible devices are skipped cleanly.
+	constexpr size_t wordBits = sizeof(unsigned long) * 8;
+	constexpr size_t eventWords = (EV_MAX + wordBits) / wordBits;
+	constexpr size_t keyWords = (KEY_MAX + wordBits) / wordBits;
+	const auto bitSet = [](const unsigned long* bits, unsigned int bit) {
+		return (bits[bit / wordBits] & (1UL << (bit % wordBits))) != 0;
+	};
+
+	static QHash<QString, int> gamepads;
+	static qint64 lastScanMs = 0;
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if (now - lastScanMs >= 2000)
+	{
+		lastScanMs = now;
+		for (auto it = gamepads.begin(); it != gamepads.end(); ++it)
+			::close(it.value());
+		gamepads.clear();
+
+		QDir inputDir(QStringLiteral("/dev/input"));
+		for (const QString& name : inputDir.entryList({QStringLiteral("event*")}, QDir::System | QDir::Files))
+		{
+			const QString path = inputDir.filePath(name);
+			const int fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+			if (fd < 0)
+				continue;
+
+			std::array<unsigned long, eventWords> eventBits{};
+			std::array<unsigned long, keyWords> keyCapabilities{};
+			if (::ioctl(fd, EVIOCGBIT(0, sizeof(eventBits)), eventBits.data()) < 0 ||
+			    !bitSet(eventBits.data(), EV_KEY) ||
+			    ::ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keyCapabilities)), keyCapabilities.data()) < 0 ||
+			    !bitSet(keyCapabilities.data(), BTN_SOUTH) ||
+			    !bitSet(keyCapabilities.data(), BTN_EAST))
+			{
+				::close(fd);
+				continue;
+			}
+			gamepads.insert(path, fd);
+		}
+	}
+
+	for (auto it = gamepads.cbegin(); it != gamepads.cend(); ++it)
+	{
+		std::array<unsigned long, keyWords> pressed{};
+		if (::ioctl(it.value(), EVIOCGKEY(sizeof(pressed)), pressed.data()) < 0)
+			continue;
+		if (kind == PadCancel && bitSet(pressed.data(), BTN_EAST))
+			return true;
+		if (kind == PadStage && bitSet(pressed.data(), BTN_NORTH))
+			return true;
+		if (kind == PadConfirm &&
+		    (bitSet(pressed.data(), BTN_SOUTH) || bitSet(pressed.data(), BTN_START)))
+			return true;
+	}
 	return false;
 #endif
 }
