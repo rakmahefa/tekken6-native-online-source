@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+# AppImages are mounted read-only. Keep a writable copy of the open-source
+# project alongside the user's locally built game and incremental CMake cache.
+APPDIR="${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
+PAYLOAD="$APPDIR/usr/share/tekken6-native-online-source"
+APP_VERSION="$(cat "$PAYLOAD/.appimage-version")"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+SOURCE_ROOT="$DATA_HOME/tekken6-native-online"
+
+mkdir -p "$SOURCE_ROOT"
+CACHED_VERSION=""
+if [ -f "$SOURCE_ROOT/.appimage-source-version" ]; then
+    CACHED_VERSION="$(cat "$SOURCE_ROOT/.appimage-source-version")"
+fi
+
+if [ "$CACHED_VERSION" != "$APP_VERSION" ]; then
+    # Merge rather than delete: never erase native/game, generated game code,
+    # build objects, settings or run data created by the player.
+    cp -a "$PAYLOAD/." "$SOURCE_ROOT/"
+    printf '%s\n' "$APP_VERSION" > "$SOURCE_ROOT/.appimage-source-version"
+fi
+
+export T6_APPIMAGE_SOURCE="$SOURCE_ROOT"
+export T6_APPIMAGE_VERSION="$APP_VERSION"
+
+# Keep Qt and its platform plugins discoverable from the AppImage bundle.
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+for plugin_root in "$APPDIR/usr/plugins" "$APPDIR/usr/lib/qt6/plugins" "$APPDIR/usr/lib/x86_64-linux-gnu/qt6/plugins"; do
+    if [ -d "$plugin_root/platforms" ]; then
+        export QT_PLUGIN_PATH="$plugin_root"
+        export QT_QPA_PLATFORM_PLUGIN_PATH="$plugin_root/platforms"
+        break
+    fi
+done
+
+exec "$APPDIR/usr/bin/tekken6-native-online" "$@"
