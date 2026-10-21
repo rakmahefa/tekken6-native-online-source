@@ -43,7 +43,9 @@ jobs:
         run: ./build/linux-port/t6_platform_smoke
 
       - name: Validate Python builder syntax
-        run: python3 -m py_compile builder/build_native_linux.py tools/apply_rexglue_patches.py
+        run: |
+          python3 -m py_compile builder/build_native_linux.py tools/apply_rexglue_patches.py
+          python3 tests/test_linux_builder_incremental.py
 
       - name: Check patch whitespace
         run: git diff --check
