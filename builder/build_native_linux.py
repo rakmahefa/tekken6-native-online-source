@@ -148,7 +148,7 @@ def write_game_source_stamp(source: Path) -> None:
     }
     stamp["default_xex_sha256"] = sha256(xex)
     GAME_SOURCE_STAMP.parent.mkdir(parents=True, exist_ok=True)
-    GAME_SOURCE_STAMP.write_text(json.dumps(stamp, indent=2) + "\\n", encoding="utf-8")
+    GAME_SOURCE_STAMP.write_text(json.dumps(stamp, indent=2) + "\n", encoding="utf-8")
 
 
 def prepare_game(source: Path, force_extract: bool = False) -> None:
