@@ -41,6 +41,8 @@ echo "Preparing a clean writable-workspace payload."
         --exclude='./runs' --exclude='./game' --exclude='./user' --exclude='./user2' \
         --exclude='./toolchain' --exclude='./generated/default' \
         --exclude='./tests' --exclude='./builder/llvm-mingw' --exclude='./builder/python' \
+        --exclude='./third_party/rexglue-sdk/tools/binutils/*.exe' \
+        --exclude='./third_party/rexglue-sdk/tools/binutils/*.dll' \
         --exclude='./launcher/build*' \
         --exclude='./launcher/official.cmake' --exclude='./launcher/official.qrc' \
         --exclude='./launcher/ranks' --exclude='./launcher/art' --exclude='./launcher/tls' \
@@ -72,6 +74,10 @@ cp "$ROOT/packaging/appimage/tekken6-native-online.desktop" \
 cp "$ROOT/packaging/appimage/tekken6-native-online.svg" \
    "$APPDIR/usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg"
 ln -sfn usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg "$APPDIR/.DirIcon"
+
+# Put AppRun in place before linuxdeploy reads the desktop entry (Exec=AppRun).
+# Reinstall it after deployment as linuxdeploy may create/adjust entry-point links.
+install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 
 # linuxdeploy bundles shared libraries and Qt plugins; appimagetool is invoked
 # separately so the custom AppRun (which stages the writable source workspace)
