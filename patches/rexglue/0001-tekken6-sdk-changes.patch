@@ -8147,7 +8147,7 @@ diff --git a/src/kernel/xboxkrnl/xboxkrnl_memory.cpp b/src/kernel/xboxkrnl/xboxk
 index 8684eda..48463c2 100644
 --- a/src/kernel/xboxkrnl/xboxkrnl_memory.cpp
 +++ b/src/kernel/xboxkrnl/xboxkrnl_memory.cpp
-@@ -17,6 +17,12 @@
+@@ -17,6 +17,14 @@
  #include <rex/assert.h>
  #include <rex/kernel/xboxkrnl/private.h>
  #include <rex/logging.h>
@@ -8162,7 +8162,7 @@ index 8684eda..48463c2 100644
  #include <rex/math.h>
  #include <rex/hook.h>
  #include <rex/types.h>
-@@ -60,6 +66,37 @@ uint32_t FromXdkProtectFlags(uint32_t protect) {
+@@ -60,6 +68,44 @@ uint32_t FromXdkProtectFlags(uint32_t protect) {
    return result;
  }
  
