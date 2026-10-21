@@ -3,6 +3,7 @@
 
 #include <QtWidgets>
 #include <QtNetwork>
+#if defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -13,6 +14,36 @@
 #include <mmsystem.h>
 #include <dbghelp.h>
 #include <tlhelp32.h>
+#else
+#include <algorithm>
+#include <cstdint>
+#include <sys/types.h>
+using DWORD = quint32;
+using WORD = quint16;
+using BYTE = quint8;
+using LONG = qint32;
+using HWND = void*;
+using HANDLE = void*;
+using HMODULE = void*;
+using LPARAM = qintptr;
+using WPARAM = quintptr;
+using UINT = unsigned int;
+using SHORT = qint16;
+using SOCKET = int;
+#ifndef INVALID_SOCKET
+#define INVALID_SOCKET (-1)
+#endif
+#ifndef SOCKET_ERROR
+#define SOCKET_ERROR (-1)
+#endif
+#ifndef closesocket
+#define closesocket close
+#endif
+inline quint64 GetTickCount64()
+{
+  return static_cast<quint64>(QDateTime::currentMSecsSinceEpoch());
+}
+#endif
 #include <algorithm>
 #include <cmath>
 #include <atomic>
