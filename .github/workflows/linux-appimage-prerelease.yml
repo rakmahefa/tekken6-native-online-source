@@ -273,6 +273,10 @@ jobs:
           test -s "$SDK/thirdparty/CMakeLists.txt"
           python3 "$CUSTOM_WORKSPACE/tools/apply_rexglue_patches.py" --sdk "$SDK"
           grep -Fq 'if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git" AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/.git")' "$SDK/thirdparty/CMakeLists.txt"
+          MEMORY_SOURCE="$SDK/src/kernel/xboxkrnl/xboxkrnl_memory.cpp"
+          grep -Fq '#if defined(_WIN32)' "$MEMORY_SOURCE"
+          grep -Fq 'return VirtualQuery(p, &mbi, sizeof(mbi))' "$MEMORY_SOURCE"
+          grep -Fq '// VirtualQuery-based guest stack probing is Windows-only.' "$MEMORY_SOURCE"
           # Running the patcher twice must remain safe and deterministic.
           python3 "$CUSTOM_WORKSPACE/tools/apply_rexglue_patches.py" --sdk "$SDK"
 
