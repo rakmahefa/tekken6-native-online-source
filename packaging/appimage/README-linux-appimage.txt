@@ -30,7 +30,7 @@ not verified by CI. Linux controller binding UI, some window hide/restore
 behavior, and Windows-only profiler/diagnostic paths remain incomplete.
 
 
-The `v2.1.6-test.3` package includes the Qt Wayland and offscreen platform plugins, Qt SVG image/icon plugins and the OpenSSL shared libraries loaded dynamically by Qt. CI validates these files and smoke-tests launcher startup; the AppImage packaging and startup smoke test passed in GitHub Actions run 39568524990.
+The AppImage bundles Qt's platform plugins plus the separate Wayland shell-integration plugins (xdg-shell, wl-shell, ivi-shell and qt-shell) and the wayland-egl client-buffer plugin. These are separate Qt plugin categories and are required when launching under a Wayland desktop. The packaging script and CI verify that the required plugins are present. The package also includes Qt SVG image/icon plugins and the OpenSSL shared libraries loaded dynamically by Qt.
 
 Network configuration: this public source intentionally does not include the official lobby endpoint or its pinned certificate. The placeholder endpoint cannot connect to the real profile/matchmaking service. Supply the actual endpoint and pinned PEM leaf certificate from the service maintainer when launching a private/test build:
 
