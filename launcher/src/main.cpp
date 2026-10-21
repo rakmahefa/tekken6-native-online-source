@@ -157,8 +157,8 @@ static int launcherMain(int argc, char** argv)
 	app.setStyleSheet(QString(kStyleTemplate).replace("%BODY%", g_body).replace("%DISPLAY%", g_display) +
 	                  (QFile::exists(":/art/ui/field.png") ? kArtStyle : ""));
 	Launcher w;
-	BOOL dark = TRUE;
 #if defined(_WIN32)
+	BOOL dark = TRUE;
 	DwmSetWindowAttribute(reinterpret_cast<HWND>(w.winId()), 20, &dark, sizeof(dark));
 #endif
 	if (g_updateTest)
