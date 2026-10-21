@@ -126,8 +126,8 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 - Embed a clean workspace source archive containing project source, patches and the pinned ReXGlue SDK, while excluding Git metadata, generated game code, ISO files, extracted game data, local build caches, settings and private official endpoint assets.
 - Make the AppImage's AppRun stage that source archive into `$XDG_DATA_HOME/tekken6-native-online/workspace` (or `~/.local/share/tekken6-native-online/workspace`) and pass the writable path through `T6_PORT_ROOT`. This is required because the AppImage's SquashFS root cannot be written to by the game builder.
 - Retain the player's local `native/`, `generated/default/`, launcher settings and run data when staging a newer embedded source bundle.
-- Upload the AppImage, SHA-256 checksum and usage note as a 14-day GitHub Actions artifact. Pull requests and development-branch pushes do not publish a Release.
-- Publish a GitHub prerelease only for a `vX.Y.Z-test.N` tag or a manual `workflow_dispatch` with the publish checkbox enabled. The tag format is deliberately compatible with the launcher's existing test-channel version parser.
+- Upload the AppImage, SHA-256 checksum and usage note as a 14-day GitHub Actions artifact. Pull requests and ordinary development-branch pushes produce artifacts only.
+- Publish a GitHub prerelease only on an explicitly requested test tag, a manual `workflow_dispatch` with the publish checkbox enabled, or a branch push that changes `packaging/appimage/PRERELEASE_VERSION`. The tag format is deliberately compatible with the launcher's existing test-channel version parser.
 - Validate packaging inputs so the AppImage payload fails closed if an ISO, `Default.xex` or `DATA*.BIN` appears. The compiler toolchain is not bundled; README documents host build dependencies.
 
 ### Milestone 2 acceptance criteria
@@ -138,6 +138,16 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 4. A release job can create/update a **prerelease**, and cannot publish from an ordinary PR or branch push.
 5. A first AppImage launch stages the source bundle into writable per-user storage; no game image, generated game code or save data is present in the CI artifact.
 6. The maintainer downloads the artifact/prerelease, launches it on a Linux desktop, selects their own supported game copy, and reports the results of code generation/build and gameplay testing.
+
+### CI result and published prerelease
+
+- Successful build + publish workflow: [run 39563204068](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563204068), built from `dfda7e5afb16d64c98334ada71ee3d9bd1d5c0f3`.
+- Artifact validation passed, and GitHub Actions uploaded `Tekken6NativeOnline-linux-2.1.6-test.1` (AppImage, `SHA256SUMS`, usage note; 14-day CI retention).
+- Published test prerelease: [`v2.1.6-test.1`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1).
+- Direct AppImage: [`Tekken6NativeOnline-x86_64.AppImage`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.1/Tekken6NativeOnline-x86_64.AppImage), size 118,179,008 bytes, SHA-256 `52c56c8887dedafe3f7d0b0b6a16354185452b98585f77c7748caed652f15c16`.
+- The independent Linux smoke workflow also passed both jobs at the same source SHA: [run 39563208786](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563208786).
+
+The AppImage has been assembled and its file/checksum/desktop metadata validated by CI. It has **not** been launched on a user desktop, and CI does **not** establish that a player's XEX code-generates, the full game links or gameplay works. Those remain the next manual acceptance test.
 
 ### Known limitations for this milestone
 
