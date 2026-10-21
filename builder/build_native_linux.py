@@ -9,6 +9,7 @@ builds so incremental rebuilds do not recompile the entire project.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -20,6 +21,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE = ROOT / "native"
 GAME = NATIVE / "game"
+GAME_SOURCE_STAMP = NATIVE / "game-source.json"
 BUILD = NATIVE / "build"
 XDVDFS_BUILD = NATIVE / "xdvdfs-build"
 XDVDFS = XDVDFS_BUILD / "xdvdfs_tool"
@@ -117,7 +119,39 @@ def check_iso(iso: Path) -> tuple[str | None, str]:
     return xex_rel, "Tekken 6 USA/Europe Rev 1"
 
 
-def prepare_game(source: Path) -> None:
+def iso_identity(source: Path) -> dict[str, str | int]:
+    stat = source.stat()
+    return {
+        "kind": "iso",
+        "path": str(source.resolve()),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def read_game_source_stamp() -> dict[str, object] | None:
+    try:
+        value = json.loads(GAME_SOURCE_STAMP.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def write_game_source_stamp(source: Path) -> None:
+    xex = find_xex(GAME)
+    if not xex:
+        raise RuntimeError("cannot record game source: native/game has no Default.xex")
+    stamp = iso_identity(source) if source.is_file() else {
+        "kind": "folder",
+        "path": str(source.resolve()),
+        "mtime_ns": source.stat().st_mtime_ns,
+    }
+    stamp["default_xex_sha256"] = sha256(xex)
+    GAME_SOURCE_STAMP.parent.mkdir(parents=True, exist_ok=True)
+    GAME_SOURCE_STAMP.write_text(json.dumps(stamp, indent=2) + "\\n", encoding="utf-8")
+
+
+def prepare_game(source: Path, force_extract: bool = False) -> None:
     if source.is_dir():
         xex, info = check_game_folder(source)
         if not xex:
@@ -135,12 +169,38 @@ def prepare_game(source: Path) -> None:
             raise RuntimeError(staged_info)
         shutil.rmtree(GAME, ignore_errors=True)
         incoming.replace(GAME)
+        GAME_SOURCE_STAMP.unlink(missing_ok=True)
         say(f"Validated game data: {staged_info}")
         return
+
+    if not source.is_file():
+        raise RuntimeError(f"ISO not found: {source}")
+
+    # The common rebuild path should only revalidate the staged XEX and the ISO's
+    # cheap file identity, not unpack a 6+ GB disc on every invocation.
+    existing_xex, existing_info = check_game_folder(GAME)
+    existing_stamp = read_game_source_stamp()
+    identity = iso_identity(source)
+    if not force_extract and existing_xex and existing_stamp:
+        stamp_identity = {k: existing_stamp.get(k) for k in ("kind", "path", "size", "mtime_ns")}
+        if (stamp_identity == identity and
+                existing_stamp.get("default_xex_sha256") == sha256(existing_xex)):
+            say(f"Reusing validated native/game from unchanged ISO: {existing_info}")
+            return
 
     xex_rel, info = check_iso(source)
     if not xex_rel:
         raise RuntimeError(info)
+
+    # Older builder versions extracted the game but did not record the ISO identity.
+    # Preserve those already validated local files on the first upgraded run. If the
+    # user intentionally wants a fresh extraction, --force-extract is explicit.
+    if not force_extract and existing_xex and existing_stamp is None:
+        write_game_source_stamp(source)
+        say(f"Reusing existing validated native/game (legacy unstamped extraction): {existing_info}")
+        say("Recorded the selected ISO as the source; use --force-extract <ISO> to replace the staged data.")
+        return
+
     NATIVE.mkdir(parents=True, exist_ok=True)
     incoming = NATIVE / "game.incoming"
     shutil.rmtree(incoming, ignore_errors=True)
@@ -153,6 +213,7 @@ def prepare_game(source: Path) -> None:
         raise RuntimeError(staged_info)
     shutil.rmtree(GAME, ignore_errors=True)
     incoming.replace(GAME)
+    write_game_source_stamp(source)
     say(f"Validated extracted game: {staged_info}")
 
 
@@ -257,17 +318,22 @@ def main(argv: list[str]) -> int:
         print(("OK " if message == "Tekken 6 USA/Europe Rev 1" else "ERROR ") + message, flush=True)
         return 0 if message == "Tekken 6 USA/Europe Rev 1" else 1
 
+    force_extract = False
     if args == ["--update"] or args == ["--relink"]:
         if not check_game_folder(GAME)[0]:
             print("ERROR no validated game copy is staged in native/game", flush=True)
             return 1
         source = GAME
+    elif len(args) == 2 and args[0] == "--force-extract":
+        source = Path(args[1]).expanduser().resolve()
+        force_extract = True
     elif len(args) == 1 and not args[0].startswith("--"):
         source = Path(args[0]).expanduser().resolve()
     elif not args:
         print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
         print("       python3 builder/build_native_linux.py --check <ISO or folder>")
         print("       python3 builder/build_native_linux.py --update | --relink")
+        print("       python3 builder/build_native_linux.py --force-extract <Tekken 6 ISO>")
         return 1
     else:
         print("ERROR invalid arguments; run without arguments for usage", flush=True)
@@ -278,8 +344,8 @@ def main(argv: list[str]) -> int:
     started = time.monotonic()
     try:
         NATIVE.mkdir(parents=True, exist_ok=True)
-        if args and len(args) == 1 and not args[0].startswith("--"):
-            prepare_game(source)
+        if (args and not (args == ["--update"] or args == ["--relink"])):
+            prepare_game(source, force_extract=force_extract)
         with log.open("a", encoding="utf-8") as stream:
             stream.write(f"\\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] build source: {source}\\n")
         build_game()
