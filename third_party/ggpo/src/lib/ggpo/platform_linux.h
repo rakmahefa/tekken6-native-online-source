@@ -93,6 +93,20 @@ inline int strcpy_s(char (&destination)[N], const char* source)
    return strcpy_s(destination, N, source);
 }
 
+// GGPO passes the remaining free capacity as the second argument.
+inline int strncat_s(char* destination, size_t remaining_capacity, const char* source, size_t source_capacity)
+{
+   if (!destination || !source || remaining_capacity == 0)
+      return EINVAL;
+   const size_t current_length = std::strlen(destination);
+   const size_t source_length = std::min(std::strlen(source), source_capacity);
+   if (source_length >= remaining_capacity)
+      return ERANGE;
+   std::memcpy(destination + current_length, source, source_length);
+   destination[current_length + source_length] = '\\0';
+   return 0;
+}
+
 inline void OutputDebugStringA(const char* message)
 {
    if (message) std::fputs(message, stderr);
