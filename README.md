@@ -73,11 +73,11 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 ## Linux AppImage test prerelease (experimental)
 
-**Latest published build before the current fixes:** [`v2.1.6-test.4`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.4). The next test build configures the public GitHub releases feed for patch notes, embeds its actual prerelease version in the launcher, and keeps Settings/local profile reachable when the lobby configuration is missing. Follow the [GitHub Actions runs](https://github.com/rakmahefa/tekken6-native-online-source/actions) for build and release status.
+**Latest published launcher AppImage:** [`v2.1.6-test.6`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.6). It configures the public GitHub releases feed for Patch notes, embeds its own prerelease version, and keeps Settings/local Profile reachable when the lobby configuration is absent. Its build, Wayland payload checks and Qt Network/TLS request succeeded in [GitHub Actions run 39577215246](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39577215246). The later local game-builder fixes are on `feature/native-linux-build`; update the source workspace to that branch before testing game code generation.
 
-Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/Tekken6NativeOnline-x86_64.AppImage)  
-Checksum manifest: [`SHA256SUMS`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/SHA256SUMS)  
-Testing notes: [`README-linux-appimage.txt`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/README-linux-appimage.txt)
+Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.6/Tekken6NativeOnline-x86_64.AppImage)  
+Checksum manifest: [`SHA256SUMS`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.6/SHA256SUMS)  
+Testing notes: [`README-linux-appimage.txt`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.6/README-linux-appimage.txt)
 
 Keep the AppImage and `SHA256SUMS` in the same folder and run:
 
