@@ -117,8 +117,35 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 - **Official deployment settings/assets are absent.** The public launcher still has placeholder endpoint/configuration unless maintainers supply a supported public configuration. Do not leak private server credentials, TLS keys/certificates or non-public assets into CI artifacts.
 - **Dependency/version floor needs a local run.** ReXGlue requests Clang 18+, CMake 3.25+ and Vulkan development dependencies. The player builder and deployment instructions must be verified against the actual pinned SDK revision.
 
+## Milestone 2 — AppImage artifact and prerelease workflow
+
+### Delivery plan and implementation
+
+- Add an AppImage build script at `tools/build_appimage.sh` so local packaging and CI use the same steps.
+- Build the Qt launcher on Ubuntu 24.04 with Clang and Qt 6; bundle its shared libraries and Qt plugins using linuxdeploy/linuxdeploy-plugin-qt; create the final AppImage with appimagetool.
+- Embed a clean workspace source archive containing project source, patches and the pinned ReXGlue SDK, while excluding Git metadata, generated game code, ISO files, extracted game data, local build caches, settings and private official endpoint assets.
+- Make the AppImage's AppRun stage that source archive into `$XDG_DATA_HOME/tekken6-native-online/workspace` (or `~/.local/share/tekken6-native-online/workspace`) and pass the writable path through `T6_PORT_ROOT`. This is required because the AppImage's SquashFS root cannot be written to by the game builder.
+- Retain the player's local `native/`, `generated/default/`, launcher settings and run data when staging a newer embedded source bundle.
+- Upload the AppImage, SHA-256 checksum and usage note as a 14-day GitHub Actions artifact. Pull requests and development-branch pushes do not publish a Release.
+- Publish a GitHub prerelease only for a `vX.Y.Z-test.N` tag or a manual `workflow_dispatch` with the publish checkbox enabled. The tag format is deliberately compatible with the launcher's existing test-channel version parser.
+- Validate packaging inputs so the AppImage payload fails closed if an ISO, `Default.xex` or `DATA*.BIN` appears. The compiler toolchain is not bundled; README documents host build dependencies.
+
+### Milestone 2 acceptance criteria
+
+1. The new packaging workflow configures, builds and links the Qt launcher on Ubuntu.
+2. linuxdeploy discovers the executable and Qt plugins; appimagetool produces a non-empty executable x86_64 AppImage.
+3. CI validates the desktop file and SHA-256 manifest and uploads the AppImage artifact.
+4. A release job can create/update a **prerelease**, and cannot publish from an ordinary PR or branch push.
+5. A first AppImage launch stages the source bundle into writable per-user storage; no game image, generated game code or save data is present in the CI artifact.
+6. The maintainer downloads the artifact/prerelease, launches it on a Linux desktop, selects their own supported game copy, and reports the results of code generation/build and gameplay testing.
+
+### Known limitations for this milestone
+
+- No complete game executable can be built in public CI because the required retail game image is not part of the repository and must remain the player's own copy.
+- The AppImage bundles Qt runtime libraries and plugins, not Clang/CMake/Ninja/Python/Vulkan development headers. Those host dependencies must be installed before the local game build.
+- The public checkout lacks untracked official server configuration, certificate and art assets. The packaged launcher therefore remains a test build and is not intended for a public stable matchmaking release.
+- A passing AppImage packaging job proves the launcher is packaged, not that the user ROM code-generates, links or reaches gameplay. The requested local ROM test remains the end-to-end acceptance step.
+
 ## Current milestone status
 
-**In progress — not release-ready.** The structural POSIX paths and isolated CI checks are implemented, but milestone acceptance still depends on clean CI results for the GGPO/platform and Qt launcher jobs, followed by a maintainer's full local build and gameplay test from their own supported game copy.
-
-The next milestone after this one is the requested cached Linux release workflow and the separate GitHub Release/AppImage deployment workflow.
+**Milestone 1 smoke checks passed on Ubuntu; Milestone 2 AppImage delivery is implemented and awaiting its own CI run.** Neither milestone proves full game linkage or actual gameplay until a maintainer builds locally from their own supported copy and tests a match.
