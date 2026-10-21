@@ -1,0 +1,219 @@
+name: Native Linux AppImage and prerelease
+
+on:
+  pull_request:
+    branches:
+      - feature/native-linux-build
+      - main
+    paths:
+      - ".github/workflows/linux-appimage-prerelease.yml"
+      - "packaging/appimage/**"
+      - "launcher/**"
+      - "builder/**"
+      - "src/**"
+      - "tools/**"
+      - "third_party/ggpo/**"
+      - "third_party/rexglue-sdk"
+      - "patches/rexglue/**"
+      - "CMakeLists.txt"
+      - "generated/rexglue.cmake"
+  push:
+    branches:
+      - feature/linux-appimage-prerelease
+    tags:
+      - "linux-v*-preview*"
+  workflow_dispatch:
+    inputs:
+      publish_prerelease:
+        description: Publish the tested AppImage to a GitHub prerelease
+        type: boolean
+        required: true
+        default: true
+      release_tag:
+        description: Prerelease tag (must match linux-vX.Y.Z-preview.N)
+        type: string
+        required: true
+        default: linux-v0.1.0-preview.1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-appimage:
+    name: Build x86_64 AppImage and upload CI artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      appimage_name: ${{ steps.package.outputs.appimage_name }}
+    steps:
+      - name: Checkout source and pinned ReXGlue SDK
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install launcher, packaging and native builder prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang cmake ninja-build qt6-base-dev python3 git build-essential \
+            libvulkan-dev libgtk-3-dev libx11-xcb-dev libxss-dev \
+            libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
+            libdecor-0-dev libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libfuse2t64 rsync curl file
+
+      - name: Compile native Qt launcher
+        run: |
+          cmake -S launcher -B "$RUNNER_TEMP/t6-launcher-build" -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/t6-launcher-build" --parallel 2
+          test -s "$RUNNER_TEMP/t6-launcher-build/Tekken6 Native Online"
+
+      - name: Assemble AppDir and copy the source-only player builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPDIR="$RUNNER_TEMP/Tekken6NativeOnline.AppDir"
+          PAYLOAD="$APPDIR/usr/share/tekken6-native-online-source"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$PAYLOAD"
+
+          install -m 0755 "$RUNNER_TEMP/t6-launcher-build/Tekken6 Native Online" \
+            "$APPDIR/usr/bin/tekken6-native-online"
+          install -m 0755 packaging/appimage/AppRun "$APPDIR/AppRun"
+          install -m 0644 packaging/appimage/tekken6-native-online.desktop \
+            "$APPDIR/usr/share/applications/tekken6-native-online.desktop"
+          install -m 0644 packaging/appimage/tekken6-native-online.svg \
+            "$APPDIR/tekken6-native-online.svg"
+
+          # Bundle the source and pinned SDK so the launcher can build from the
+          # player's own copy later. No ROM, generated game C++, local build,
+          # save data, launcher settings, or official/private endpoint material.
+          rsync -a --delete \
+            --exclude='/.git' --exclude='**/.git' --exclude='/.github' \
+            --exclude='/native/' --exclude='/game/' --exclude='/user/' \
+            --exclude='/build/' --exclude='/out/' --exclude='/runs/' --exclude='/toolchain/' \
+            --exclude='/generated/default/*' \
+            --exclude='/launcher/build*/' \
+            --exclude='/launcher/official.cmake' --exclude='/launcher/official.qrc' \
+            --exclude='/launcher/ranks/' --exclude='/launcher/art/' --exclude='/launcher/tls/' \
+            --exclude='*.iso' --exclude='*.log' --exclude='*.ini' \
+            ./ "$PAYLOAD/"
+          mkdir -p "$PAYLOAD/generated/default"
+          touch "$PAYLOAD/generated/default/.gitkeep"
+          printf '%s\n' "$GITHUB_SHA" > "$PAYLOAD/.appimage-version"
+
+          if find "$PAYLOAD" -type f \( -iname '*.iso' -o -iname 'default.xex' \) -print -quit | grep -q .; then
+            echo "Unexpected game image found in AppImage payload" >&2
+            exit 1
+          fi
+
+      - name: Download linuxdeploy and Qt deployment plugin
+        run: |
+          mkdir -p "$RUNNER_TEMP/linuxdeploy"
+          curl --fail --location --retry 3 \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
+            -o "$RUNNER_TEMP/linuxdeploy/linuxdeploy-x86_64.AppImage"
+          curl --fail --location --retry 3 \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage \
+            -o "$RUNNER_TEMP/linuxdeploy/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x "$RUNNER_TEMP/linuxdeploy/"*.AppImage
+          echo "$RUNNER_TEMP/linuxdeploy" >> "$GITHUB_PATH"
+
+      - name: Bundle Qt libraries and create AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QMAKE="$(command -v qmake6)"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          APPDIR="$RUNNER_TEMP/Tekken6NativeOnline.AppDir"
+          linuxdeploy-x86_64.AppImage \
+            --appdir "$APPDIR" \
+            --executable "$APPDIR/usr/bin/tekken6-native-online" \
+            --desktop-file "$APPDIR/usr/share/applications/tekken6-native-online.desktop" \
+            --icon-file "$APPDIR/tekken6-native-online.svg" \
+            --plugin qt --output appimage
+
+      - name: Name artifact and calculate SHA-256
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          built="$(find . -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$built"
+          name="Tekken6-Native-Online-linux-x86_64.AppImage"
+          install -m 0755 "$built" "dist/$name"
+          install -m 0644 packaging/appimage/PRE-RELEASE-TESTING.md dist/PRE-RELEASE-TESTING.md
+          (cd dist && sha256sum "$name" > "$name.sha256")
+          file "dist/$name"
+          test -s "dist/$name"
+          echo "appimage_name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload AppImage artifact for manual testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-${{ github.sha }}
+          path: |
+            dist/Tekken6-Native-Online-linux-x86_64.AppImage
+            dist/Tekken6-Native-Online-linux-x86_64.AppImage.sha256
+            dist/PRE-RELEASE-TESTING.md
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-prerelease:
+    name: Publish GitHub prerelease (tag or explicit manual dispatch)
+    needs: build-appimage
+    if: >-
+      startsWith(github.ref, 'refs/tags/linux-v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish_prerelease)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage-${{ github.sha }}
+          path: dist
+
+      - name: Validate prerelease tag
+        id: tag
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$EVENT_REF"
+          fi
+          if ! [[ "$tag" =~ ^linux-v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
+            echo "Refusing non-preview tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create experimental GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          APPIMAGE: ${{ needs.build-appimage.outputs.appimage_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$TAG" \
+            "dist/$APPIMAGE" \
+            "dist/$APPIMAGE.sha256" \
+            dist/PRE-RELEASE-TESTING.md \
+            --title "Tekken 6 Native Online — $TAG (experimental Linux)" \
+            --notes-file dist/PRE-RELEASE-TESTING.md \
+            --prerelease --target "$GITHUB_SHA"
