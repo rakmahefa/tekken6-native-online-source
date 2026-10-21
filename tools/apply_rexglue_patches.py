@@ -27,6 +27,18 @@ def apply(repo: Path, patch: Path, base: str) -> bool:
     if git(repo, "apply", "--reverse", "--check", str(patch), check=False).returncode == 0:
         print(f"{patch.name}: already applied")
         return True
+    # Source archives used by portable packages intentionally omit Git metadata.
+    # In that case, patch application is still safe: require an exact forward
+    # applicability check, otherwise leave the SDK untouched and report why.
+    if not (repo / ".git").exists():
+        check = git(repo, "apply", "--check", str(patch), check=False)
+        if check.returncode:
+            print(f"{patch.name}: SDK source does not match the expected unpatched files; refusing to patch it.", file=sys.stderr)
+            return False
+        git(repo, "apply", str(patch))
+        print(f"{patch.name}: applied to source archive")
+        return True
+
     revision = git(repo, "rev-parse", "HEAD").stdout.strip()
     if revision != base:
         print(f"{patch.name}: expected {repo} at {base}, found {revision}; refusing to patch a different revision.", file=sys.stderr)
@@ -47,8 +59,8 @@ def main() -> int:
     args = parser.parse_args()
     sdk = args.sdk.resolve()
     patch_dir = Path(__file__).resolve().parents[1] / "patches" / "rexglue"
-    if not (sdk / ".git").exists():
-        print(f"ReXGlue SDK checkout not found: {sdk}", file=sys.stderr)
+    if not (sdk / "CMakeLists.txt").is_file():
+        print(f"ReXGlue SDK source tree not found: {sdk}", file=sys.stderr)
         return 2
     for name, sub, base in PATCHES:
         if not apply((sdk / sub).resolve(), patch_dir / name, base):
