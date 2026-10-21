@@ -125,8 +125,14 @@ jobs:
           grep -q 'ELF' <(file dist/Tekken6NativeOnline-x86_64.AppImage)
           (cd dist && sha256sum --check SHA256SUMS)
           desktop-file-validate build/appimage/AppDir/usr/share/applications/tekken6-native-online.desktop
+          # Wayland QPA loads these from plugin categories separate from platforms/.
+          test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libxdg-shell.so
+          test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libwl-shell-plugin.so
+          test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libivi-shell.so
+          test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libqt-shell.so
+          test -s build/appimage/AppDir/usr/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so
 
-      - name: Smoke-test AppImage startup, SVG icons and Qt TLS backend
+      - name: Smoke-test AppImage startup, SVG icons, Wayland integrations and Qt TLS backend
         shell: bash
         run: |
           set -euo pipefail
