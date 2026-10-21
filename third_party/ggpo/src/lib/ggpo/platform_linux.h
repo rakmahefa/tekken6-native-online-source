@@ -10,18 +10,20 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
+#include <climits>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
-#include <poll.h>
+#include <sys/poll.h>
 #include <strings.h>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <thread>
 #include <netinet/in.h>
 
 #include <algorithm>
@@ -132,6 +134,16 @@ inline BOOL ResetEvent(HANDLE fd)
    uint64_t value;
    while (fd >= 0 && read(fd, &value, sizeof(value)) == sizeof(value)) {}
    return fd >= 0;
+}
+
+inline void Sleep(DWORD milliseconds)
+{
+   std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
+
+inline void YieldProcessor()
+{
+   std::this_thread::yield();
 }
 
 inline BOOL CloseHandle(HANDLE fd)
