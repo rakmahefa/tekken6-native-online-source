@@ -142,7 +142,9 @@ void Launcher::runBuilder(const QStringList& args)
 	m_builder->setProgram(builderPython());
 	m_builder->setArguments(QStringList{"-u", "-X", "utf8", QDir::toNativeSeparators(rootFile("builder/build_native.py"))} + args);
 	// no console window of Python
+#if defined(_WIN32)
 	m_builder->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* a) { a->flags |= CREATE_NO_WINDOW; });
+#endif
 	builderLog(QString("run %1 %2").arg(m_builder->program(), m_builder->arguments().join(' ')));
 	m_buildDone.clear();
 	connect(m_builder, &QProcess::readyRead, this, [this] {
