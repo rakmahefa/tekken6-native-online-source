@@ -8207,7 +8207,7 @@ index 8684eda..48463c2 100644
  u32 NtAllocateVirtualMemory_entry(mapped_u32 base_addr_ptr, mapped_u32 region_size_ptr,
                                    u32 alloc_type, u32 protect_bits, u32 debug_memory) {
    uint32_t input_base = base_addr_ptr ? static_cast<uint32_t>(*base_addr_ptr) : 0;
-@@ -195,6 +232,7 @@ u32 NtAllocateVirtualMemory_entry(mapped_u32 base_addr_ptr, mapped_u32 region_si
+@@ -195,6 +241,7 @@ u32 NtAllocateVirtualMemory_entry(mapped_u32 base_addr_ptr, mapped_u32 region_si
    // Maybe set X_STATUS_ALREADY_COMMITTED if MEM_COMMIT?
    *base_addr_ptr = address;
    *region_size_ptr = adjusted_size;
@@ -8215,7 +8215,7 @@ index 8684eda..48463c2 100644
    REXKRNL_IMPORT_RESULT("NtAllocateVirtualMemory", "0x0 addr={:#x} size={:#x}", address,
                          adjusted_size);
    return X_STATUS_SUCCESS;
-@@ -402,6 +440,7 @@ u32 MmAllocatePhysicalMemoryEx_entry(u32 flags, u32 region_size, u32 protect_bit
+@@ -402,6 +449,7 @@ u32 MmAllocatePhysicalMemoryEx_entry(u32 flags, u32 region_size, u32 protect_bit
      // Failed - assume no memory available.
      return 0;
    }
@@ -8519,7 +8519,7 @@ index 57fd161..c05e079 100644
    // Check for an existing semaphore with the same name.
    auto existing_object =
        LookupNamedObject<XSemaphore>(REX_KERNEL_STATE(), obj_attributes_ptr.guest_address());
-@@ -651,14 +749,45 @@ u32 NtCreateSemaphore_entry(mapped_u32 handle_ptr, mapped_void obj_attributes_pt
+@@ -651,14 +749,57 @@ u32 NtCreateSemaphore_entry(mapped_u32 handle_ptr, mapped_void obj_attributes_pt
      *handle_ptr = sem->handle();
    }
  
@@ -8548,8 +8548,8 @@ index 57fd161..c05e079 100644
    int32_t previous_count = 0;
  
 -  auto sem = REX_KERNEL_OBJECTS()->LookupObject<XSemaphore>(sem_handle);
-+  // Netplay statistics (rex_sem_stats): calls and time of the releases, per calling thread kind - the sampler showed
-+  // ~20 % of the main thread's live frame behind this call
++  // Netplay statistics (rex_sem_stats): calls and elapsed time for releases.
++#if defined(_WIN32)
 +  LARGE_INTEGER t6_q0;
 +  QueryPerformanceCounter(&t6_q0);
 +  struct T6SemTime {
@@ -8561,12 +8561,24 @@ index 57fd161..c05e079 100644
 +      g_t6_sem_ticks.fetch_add(static_cast<uint64_t>(q1.QuadPart - q0.QuadPart), std::memory_order_relaxed);
 +    }
 +  } t6_sem_time{t6_q0};
++#else
++  const auto t6_q0 = std::chrono::steady_clock::now();
++  struct T6SemTime {
++    std::chrono::steady_clock::time_point q0;
++    ~T6SemTime() {
++      g_t6_sem_calls.fetch_add(1, std::memory_order_relaxed);
++      const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
++          std::chrono::steady_clock::now() - q0).count();
++      g_t6_sem_ticks.fetch_add(static_cast<uint64_t>(elapsed), std::memory_order_relaxed);
++    }
++  } t6_sem_time{t6_q0};
++#endif
 +  auto sem_obj = t6_lookup_cached(sem_handle);
 +  XSemaphore* sem = sem_obj && sem_obj->type() == XObject::Type::Semaphore ? static_cast<XSemaphore*>(sem_obj.get()) : nullptr;
    if (sem) {
      bool success = sem->ReleaseSemaphore(static_cast<int32_t>(release_count), &previous_count);
      if (!success) {
-@@ -671,6 +800,9 @@ u32 NtReleaseSemaphore_entry(u32 sem_handle, u32 release_count, mapped_u32 previ
+@@ -671,6 +812,9 @@ u32 NtReleaseSemaphore_entry(u32 sem_handle, u32 release_count, mapped_u32 previ
      *previous_count_ptr = (uint32_t)previous_count;
    }
  
@@ -8576,7 +8588,7 @@ index 57fd161..c05e079 100644
    return result;
  }
  
-@@ -720,7 +852,7 @@ u32 NtReleaseMutant_entry(u32 mutant_handle, u32 unknown) {
+@@ -720,7 +864,7 @@ u32 NtReleaseMutant_entry(u32 mutant_handle, u32 unknown) {
  
    X_STATUS result = X_STATUS_SUCCESS;
  
@@ -8585,7 +8597,7 @@ index 57fd161..c05e079 100644
    if (mutant) {
      result = mutant->ReleaseMutant(priority_increment, abandon, wait);
    } else {
-@@ -836,28 +968,215 @@ uint32_t xeKeWaitForSingleObject(void* object_ptr, uint32_t wait_reason, uint32_
+@@ -836,28 +980,217 @@ uint32_t xeKeWaitForSingleObject(void* object_ptr, uint32_t wait_reason, uint32_
    return result;
  }
  
@@ -8706,6 +8718,7 @@ index 57fd161..c05e079 100644
 +// Netplay: current count of a guest semaphore (-1: not a semaphore). A save / load must not happen while a worker
 +// pool's semaphore holds a released but not yet taken count (the woken worker would take a job from a restored queue).
 +extern "C" __declspec(dllexport) int rex_semaphore_count(uint32_t handle) {
++#if defined(_WIN32)
 +  using namespace rex; using namespace rex::system;
 +  auto object = REX_KERNEL_OBJECTS()->LookupObject<XObject>(handle);
 +  if (!object || object->type() != XObject::Type::Semaphore) return -1;
@@ -8717,6 +8730,11 @@ index 57fd161..c05e079 100644
 +  static QueryFn query = reinterpret_cast<QueryFn>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQuerySemaphore"));
 +  if (!query || query(native, 0, &info, sizeof(info), nullptr) != 0) return -1;
 +  return static_cast<int>(info.current);
++#else
++  (void)handle;
++  // Native semaphore internals are not exposed by the POSIX wait implementation.
++  return -1;
++#endif
 +}
 +// Netplay: the global critical region (interrupt callbacks - the vblank callback - run guest code under it). Held
 +// across a save / load so no interrupt callback runs in the middle of the copy (with the guest vblank at 1 ms a
@@ -8778,18 +8796,15 @@ index 57fd161..c05e079 100644
 +    // logical processors 50 us, 4-7 20 us, fewer: none); T6_SEM_SPIN_US=<n> overrides, 0 = off. A polling thread is
 +    // not counted as a waiter (rex_waiters = threads really blocked).
 +    if (object->type() == XObject::Type::Semaphore && (!timeout_ptr || timeout != 0)) {
-+      static const int64_t spin_ticks = [] {
++      static const std::chrono::microseconds spin_duration = [] {
 +        // OFF by default (rb15: the polling workers took CPU from the main thread - game frame 6.7 -> 7.6 ms, a
 +        // release only 4.7 -> 4.2 us); T6_SEM_SPIN_US=<n> switches it on for experiments.
 +        int us = 0;
 +        if (const char* e = std::getenv("T6_SEM_SPIN_US"); e && *e) us = std::atoi(e);
-+        LARGE_INTEGER f;
-+        QueryPerformanceFrequency(&f);
-+        return static_cast<int64_t>(f.QuadPart) * us / 1000000;
++        return std::chrono::microseconds(us);
 +      }();
-+      if (spin_ticks > 0) {
-+        LARGE_INTEGER q0, q;
-+        QueryPerformanceCounter(&q0);
++      if (spin_duration.count() > 0) {
++        const auto q0 = std::chrono::steady_clock::now();
 +        for (;;) {
 +          uint64_t now = 0;
 +          if (object->Wait(3, wait_mode, 0, &now) == X_STATUS_SUCCESS) {
@@ -8797,8 +8812,7 @@ index 57fd161..c05e079 100644
 +            return X_STATUS_SUCCESS;
 +          }
 +          for (int k = 0; k < 8; k++) _mm_pause();
-+          QueryPerformanceCounter(&q);
-+          if (q.QuadPart - q0.QuadPart >= spin_ticks) break;
++          if (std::chrono::steady_clock::now() - q0 >= spin_duration) break;
 +        }
 +      }
 +    }
@@ -8808,7 +8822,7 @@ index 57fd161..c05e079 100644
      if (alertable && result == X_STATUS_USER_APC) {
        XThread::GetCurrentThread()->DeliverAPCs();
      }
-@@ -865,6 +1184,7 @@ u32 NtWaitForSingleObjectEx_entry(u32 object_handle, u32 wait_mode, u32 alertabl
+@@ -865,6 +1198,7 @@ u32 NtWaitForSingleObjectEx_entry(u32 object_handle, u32 wait_mode, u32 alertabl
      result = X_STATUS_INVALID_HANDLE;
    }
  
@@ -8816,7 +8830,7 @@ index 57fd161..c05e079 100644
    return result;
  }
  
-@@ -902,7 +1222,7 @@ uint32_t xeNtWaitForMultipleObjectsEx(uint32_t count, rex::be<uint32_t>* handles
+@@ -902,7 +1236,7 @@ uint32_t xeNtWaitForMultipleObjectsEx(uint32_t count, rex::be<uint32_t>* handles
    std::vector<object_ref<XObject>> objects;
    for (uint32_t n = 0; n < count; n++) {
      uint32_t object_handle = handles[n];
@@ -8825,7 +8839,7 @@ index 57fd161..c05e079 100644
      if (!object) {
        return X_STATUS_INVALID_PARAMETER;
      }
-@@ -926,14 +1246,28 @@ u32 NtWaitForMultipleObjectsEx_entry(u32 count, mapped_u32 handles, u32 wait_typ
+@@ -926,14 +1260,28 @@ u32 NtWaitForMultipleObjectsEx_entry(u32 count, mapped_u32 handles, u32 wait_typ
  
  u32 NtSignalAndWaitForSingleObjectEx_entry(u32 signal_handle, u32 wait_handle, u32 alertable,
                                             u32 r6, mapped_u64 timeout_ptr) {
@@ -8856,7 +8870,7 @@ index 57fd161..c05e079 100644
    } else {
      result = X_STATUS_INVALID_HANDLE;
    }
-@@ -942,6 +1276,8 @@ u32 NtSignalAndWaitForSingleObjectEx_entry(u32 signal_handle, u32 wait_handle, u
+@@ -942,6 +1290,8 @@ u32 NtSignalAndWaitForSingleObjectEx_entry(u32 signal_handle, u32 wait_handle, u
      XThread::GetCurrentThread()->DeliverAPCs();
    }
  
@@ -8865,7 +8879,7 @@ index 57fd161..c05e079 100644
    return result;
  }
  
-@@ -1047,6 +1383,7 @@ uint32_t xeKeInsertQueueApc(XAPC* apc, uint32_t arg1, uint32_t arg2, uint32_t pr
+@@ -1047,6 +1397,7 @@ uint32_t xeKeInsertQueueApc(XAPC* apc, uint32_t arg1, uint32_t arg2, uint32_t pr
  }
  
  u32 KfAcquireSpinLock_entry(mapped_u32 lock_ptr) {
@@ -8873,7 +8887,7 @@ index 57fd161..c05e079 100644
    auto lock = reinterpret_cast<X_KSPINLOCK*>(lock_ptr.host_address());
    return xeKeKfAcquireSpinLock(current_ppc_context(), lock);
  }
-@@ -1057,11 +1394,13 @@ void KfReleaseSpinLock_entry(mapped_u32 lock_ptr, u32 old_irql) {
+@@ -1057,11 +1408,13 @@ void KfReleaseSpinLock_entry(mapped_u32 lock_ptr, u32 old_irql) {
  }
  
  void KeAcquireSpinLockAtRaisedIrql_entry(mapped_u32 lock_ptr) {
