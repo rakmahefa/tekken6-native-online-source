@@ -16,8 +16,13 @@
 #include <tlhelp32.h>
 #else
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 using DWORD = quint32;
 using WORD = quint16;
 using BYTE = quint8;
@@ -41,7 +46,8 @@ using SOCKET = int;
 #endif
 inline quint64 GetTickCount64()
 {
-  return static_cast<quint64>(QDateTime::currentMSecsSinceEpoch());
+  return static_cast<quint64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 #endif
 #include <algorithm>
