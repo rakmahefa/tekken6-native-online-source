@@ -240,14 +240,14 @@ def write_manifest() -> Path:
     write_if_changed(config_target, config_source.read_text(encoding="utf-8"))
     manifest = ROOT / "tekken6_manifest.toml"
     content = (
-        '[project]\\n'
-        'name = "tekken6"\\n'
-        'sdk_version = "0.10.0"\\n'
-        'game_root = "native/game"\\n\\n'
-        '[entrypoint]\\n'
-        f'file_path = "native/game/{xex.name}"\\n'
-        'out_directory_path = "generated/default"\\n'
-        'includes = ["tekken6_config.toml"]\\n'
+        '[project]\n'
+        'name = "tekken6"\n'
+        'sdk_version = "0.10.0"\n'
+        'game_root = "native/game"\n\n'
+        '[entrypoint]\n'
+        f'file_path = "native/game/{xex.name}"\n'
+        'out_directory_path = "generated/default"\n'
+        'includes = ["tekken6_config.toml"]\n'
     )
     write_if_changed(manifest, content)
     return manifest
