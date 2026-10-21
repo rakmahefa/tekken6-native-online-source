@@ -307,8 +307,19 @@ def build_game() -> None:
     say(f"DONE {target_exe}")
 
 
+def print_usage() -> None:
+    print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
+    print("       python3 builder/build_native_linux.py --check <ISO or folder>")
+    print("       python3 builder/build_native_linux.py --update | --relink")
+    print("       python3 builder/build_native_linux.py --force-extract <Tekken 6 ISO>")
+    print("       python3 builder/build_native_linux.py --help")
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
+    if args in (["--help"], ["-h"]):
+        print_usage()
+        return 0
     if len(args) == 2 and args[0] == "--check":
         source = Path(args[1]).expanduser().resolve()
         if source.is_dir():
@@ -330,10 +341,7 @@ def main(argv: list[str]) -> int:
     elif len(args) == 1 and not args[0].startswith("--"):
         source = Path(args[0]).expanduser().resolve()
     elif not args:
-        print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
-        print("       python3 builder/build_native_linux.py --check <ISO or folder>")
-        print("       python3 builder/build_native_linux.py --update | --relink")
-        print("       python3 builder/build_native_linux.py --force-extract <Tekken 6 ISO>")
+        print_usage()
         return 1
     else:
         print("ERROR invalid arguments; run without arguments for usage", flush=True)
