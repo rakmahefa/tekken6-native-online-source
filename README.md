@@ -73,9 +73,14 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 ## Linux AppImage test prerelease (experimental)
 
-The GitHub Actions workflow at .github/workflows/linux-appimage-prerelease.yml now builds a native Qt launcher AppImage, uploads it as a CI artifact, and can publish the same verified files as a GitHub prerelease. Pull requests and pushes to the Linux development branch build the artifact only; publishing is gated behind a test tag or an explicit workflow-dispatch input.
+**First prerelease built and published:** [`v2.1.6-test.1`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1). The [Ubuntu AppImage workflow passed](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563204068) and uploaded the AppImage, checksum and usage note.
 
-To request a prerelease, open **Actions → Linux AppImage prerelease → Run workflow**, select the Linux development branch, enter a version such as `0.1.0-test.1`, and enable **Publish the successfully built AppImage as a GitHub prerelease**. Alternatively, a tag such as `v0.1.0-test.1` triggers a build and prerelease publication. The tag keeps the launcher's existing test-channel version handling compatible.
+Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.1/Tekken6NativeOnline-x86_64.AppImage)  
+SHA-256: `52c56c8887dedafe3f7d0b0b6a16354185452b98585f77c7748caed652f15c16`
+
+The GitHub Actions workflow at .github/workflows/linux-appimage-prerelease.yml builds a native Qt launcher AppImage, uploads it as a CI artifact, and publishes the same verified files as a GitHub prerelease when a test release is explicitly requested. Normal pull requests and branch pushes produce artifacts only; changing `packaging/appimage/PRERELEASE_VERSION` is the explicit branch-side publish request, and tagged/manual publishing is also supported.
+
+For a future prerelease, update `packaging/appimage/PRERELEASE_VERSION` to the next `X.Y.Z-test.N` version, or open **Actions → Linux AppImage prerelease → Run workflow**, select the Linux development branch, enter that version, and enable **Publish the successfully built AppImage as a GitHub prerelease**. A tag such as `v0.1.0-test.1` can also request publication. The tag format is compatible with the launcher's existing test-channel version handling.
 
 Download `Tekken6NativeOnline-x86_64.AppImage`, make it executable, and launch it:
 
