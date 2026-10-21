@@ -464,6 +464,7 @@ void LogSystemOnce() {
       std::memcpy(cpu + 16 * i, r, 16);
     }
   }
+#if defined(_WIN32)
   SYSTEM_INFO si{};
   GetSystemInfo(&si);
   MEMORYSTATUSEX ms{};
@@ -478,6 +479,18 @@ void LogSystemOnce() {
               si.dwNumberOfProcessors, ms.ullTotalPhys / 1073741824.0, ms.ullAvailPhys / 1073741824.0, dm.dmPelsWidth,
               dm.dmPelsHeight, dm.dmDisplayFrequency,
               ps.BatteryFlag == 128 || ps.BatteryFlag == 255 ? "no battery" : ps.ACLineStatus == 1 ? "notebook on AC power" : "notebook ON BATTERY");
+#else
+  const long count = ::sysconf(_SC_NPROCESSORS_ONLN);
+  const long page_size = ::sysconf(_SC_PAGESIZE);
+  const long pages_total = ::sysconf(_SC_PHYS_PAGES);
+  const long pages_available = ::sysconf(_SC_AVPHYS_PAGES);
+  const double ram_total = page_size > 0 && pages_total > 0
+      ? static_cast<double>(page_size) * pages_total / 1073741824.0 : 0.0;
+  const double ram_available = page_size > 0 && pages_available > 0
+      ? static_cast<double>(page_size) * pages_available / 1073741824.0 : 0.0;
+  REXLOG_INFO("T6 system: CPU '{}', {} threads, RAM {:.1f} GB ({:.1f} available), Linux host",
+              cpu, count > 0 ? count : 1, ram_total, ram_available);
+#endif
 }
 bool StartSession() {
   const NetConfig& c = net_config();
@@ -784,6 +797,7 @@ void LocalLatched(uint8_t* local) {
 // against the game's own reads: "unseen" = pressed and released with no read of LocalInput in between (the game never
 // had it), "double" = a second press of the same button / direction before the frame's input went out (merged into one
 // press). Every 10 s: "T6 input diag: ..." in the log; every unseen press with its length.
+#if defined(_WIN32)
 void InputDiagThread() {
   using JoyGetPosEx = UINT(WINAPI*)(UINT, LPJOYINFOEX);
   HMODULE mm = LoadLibraryA("winmm.dll");
@@ -852,11 +866,18 @@ void InputDiagThread() {
     Sleep(1);
   }
 }
+#else
+void InputDiagThread()
+{
+  REXLOG_WARN("T6 input diagnostics: direct WinMM joystick polling is unavailable on Linux");
+}
+#endif
 
 // T6_PROFILE=1 (2026-10-17, user: "jdi na profilovani"): a thread stops the main (game) thread every millisecond and
 // notes where it is - the recompiled guest function (PPCFuncMappings: nearest host start below the address), else the
 // module (runtime / GPU / system DLL) - separately for live and re-simulated (rollback) frames. Every 30 s the top 30 of
 // each go to the log ("T6 profile"). Nothing is allocated while the thread is stopped (no lock it might hold).
+#if defined(_WIN32)
 std::atomic<HANDLE> g_prof_main{nullptr};
 void ProfileThread() {
   std::vector<std::pair<uintptr_t, uint32_t>> fns;  // host start -> guest address
@@ -919,6 +940,12 @@ void ProfileThread() {
     }
   }
 }
+#else
+void ProfileThread()
+{
+  REXLOG_WARN("T6 profile sampling is not implemented on Linux yet");
+}
+#endif
 
 void LocalInput(uint8_t* out) {
   std::memset(out, 0, kNetInput);
@@ -983,6 +1010,7 @@ void LocalInput(uint8_t* out) {
   out[1] |= static_cast<uint8_t>(b);
 }
 
+#if defined(_WIN32)
 // A key held now, or pressed and let go since the last look at it (user 2026-10-17: a press of a few ms between two
 // reads has to count): GetAsyncKeyState's low bit. The first look at a key only primes it, and while the game's window
 // is not in front the keys are looked at (cleared) but count nothing - no old press from another program comes in.
@@ -1033,6 +1061,14 @@ uint16_t KeyboardButtons() {
   }
   return b;
 }
+
+#else
+// The Windows VK-based keyboard overlay is not used by the Linux build yet.
+// SDL keyboard integration will replace this fallback in the launcher port.
+bool KeyDown(int, bool) { return false; }
+uint16_t KeyboardButtons() { return 0; }
+#endif
+
 }  // namespace t6np
 
 // The practice paced like the online fight (user 2026-10-14: a video of the same combo in RPCS3 and in our practice -
