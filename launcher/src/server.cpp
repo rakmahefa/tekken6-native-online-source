@@ -34,3 +34,13 @@ const QSslCertificate& pinnedCert()
 	}();
 	return cert;
 }
+
+bool serverConfigured()
+{
+	const QString srv = serverAddress();
+	if (srv.isEmpty() || srv == QStringLiteral("tls://lobby.example.com:7700"))
+		return false;
+	if (srv.startsWith(QStringLiteral("tls://")) && pinnedCert().isNull())
+		return false;
+	return true;
+}
