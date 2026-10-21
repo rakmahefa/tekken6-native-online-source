@@ -78,6 +78,14 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.1/Tekken6NativeOnline-x86_64.AppImage)  
 SHA-256: `52c56c8887dedafe3f7d0b0b6a16354185452b98585f77c7748caed652f15c16`
 
+The first test build exposed three runtime packaging gaps: a missing Qt Wayland platform plugin, missing Qt SVG image/icon plugins, and OpenSSL libraries loaded dynamically by Qt. The next prerelease adds explicit packages, AppDir validations, and an offscreen startup smoke test for these components.
+
+The public repository intentionally omits the private official launcher configuration and pinned lobby certificate. Consequently, the published package uses a placeholder lobby endpoint, and fixing OpenSSL alone cannot make the remote account/profile service connect. A maintainer-provided endpoint and pinned leaf certificate are required; certificate validation remains mandatory. A private/test server can be configured at launch using the existing T6_LOBBY_SERVER override and the T6_LOBBY_CERT PEM-file override:
+
+    T6_LOBBY_SERVER='tls://your-lobby-host:7700' T6_LOBBY_CERT='/path/to/pinned-lobby-cert.pem' ./Tekken6NativeOnline-x86_64.AppImage
+
+Use the actual server and certificate supplied by its maintainer; the example host is a placeholder. The game builder itself runs locally against your supported game copy and installed toolchain, so it does not need matchmaking connectivity.
+
 The GitHub Actions workflow at .github/workflows/linux-appimage-prerelease.yml builds a native Qt launcher AppImage, uploads it as a CI artifact, and publishes the same verified files as a GitHub prerelease when a test release is explicitly requested. Normal pull requests and branch pushes produce artifacts only; changing `packaging/appimage/PRERELEASE_VERSION` is the explicit branch-side publish request, and tagged/manual publishing is also supported.
 
 For a future prerelease, update `packaging/appimage/PRERELEASE_VERSION` to the next `X.Y.Z-test.N` version, or open **Actions → Linux AppImage prerelease → Run workflow**, select the Linux development branch, enter that version, and enable **Publish the successfully built AppImage as a GitHub prerelease**. A tag such as `v0.1.0-test.1` can also request publication. The tag format is compatible with the launcher's existing test-channel version handling.
