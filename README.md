@@ -71,6 +71,23 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 **Current port limitations:** The latest Ubuntu CI smoke run successfully compiles/links the Qt launcher and compiles the independent GGPO/XDVDFS/engine-platform test targets, but it does not build or validate the complete game because the supported `Default.xex` is intentionally not present in the public repository. The SDL keyboard mapping in the engine and basic evdev confirm/cancel/stage button polling in the launcher still need a full game/play test. The launcher’s controller-capture/binding UI does not yet enumerate Linux controllers. Windows-only input diagnostics and suspended-thread profiler sampling are not ported, and Linux window hide/restore helpers are currently no-ops. Vulkan is used for Linux GPU selection. Treat Linux support as experimental until the entire game builds from a local copy and real gameplay is tested.
 
+
+### AppImage pre-release (Milestone 2)
+
+The workflow `.github/workflows/linux-appimage-prerelease.yml` builds an x86_64 AppImage, uploads it as a 14-day Actions artifact, and publishes an experimental GitHub prerelease when a matching preview tag is pushed or the workflow is manually dispatched with prerelease publishing enabled.
+
+For manual testing, download **`Tekken6-Native-Online-linux-x86_64.AppImage`** and its `.sha256` file from the Actions run artifact or from a `linux-vX.Y.Z-preview.N` GitHub prerelease. Check the checksum, then run:
+
+```sh
+sha256sum --check Tekken6-Native-Online-linux-x86_64.AppImage.sha256
+chmod +x Tekken6-Native-Online-linux-x86_64.AppImage
+./Tekken6-Native-Online-linux-x86_64.AppImage
+```
+
+The AppImage bundles the launcher and its Qt runtime plus the source builder and pinned SDK. Its AppRun initializes a writable project copy at `~/.local/share/tekken6-native-online` (or `$XDG_DATA_HOME/tekken6-native-online`) so the user-selected game, generated sources and incremental CMake/Ninja cache never get written into the read-only AppImage mount. **The game is not included.** The build-from-copy path still needs the compiler/Vulkan/audio/window-system development dependencies listed above.
+
+This is a packaging/test prerelease, not a verified gameplay release. Public builds cannot include the supported `Default.xex` or any generated game-specific code, and official/private matchmaking configuration and art assets are not available in the public tree. Verify first launch, copy validation, code generation, native compile/link and local game startup with your own supported copy; report the Actions run, SHA-256, Linux distribution and desktop session when reporting problems.
+
 ## Credits
 
 - Based on [mahmoud-mess/tekken6-recomp](https://github.com/mahmoud-mess/tekken6-recomp) (the original ReXGlue setup
