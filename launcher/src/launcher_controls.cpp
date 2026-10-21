@@ -123,7 +123,11 @@ void Launcher::addPair(QGridLayout* g, int n, const QString& label, QWidget* fie
 
 QString Launcher::padBackend() const
 {
+#if defined(_WIN32)
 	return settings().value("pad_backend", "mmjoystick").toString() == "sdl" ? "sdl" : "mmjoystick";
+#else
+	return "sdl";
+#endif
 }
 
 QString Launcher::mmBinding(const QString& key, const QString& def)
