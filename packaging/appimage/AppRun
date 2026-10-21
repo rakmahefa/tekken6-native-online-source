@@ -26,7 +26,12 @@ export T6_APPIMAGE_SOURCE="$SOURCE_ROOT"
 export T6_APPIMAGE_VERSION="$APP_VERSION"
 
 # Keep Qt and its platform plugins discoverable from the AppImage bundle.
-export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+# Avoid a trailing empty LD_LIBRARY_PATH component, which would add ".".
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+else
+    export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu"
+fi
 for plugin_root in "$APPDIR/usr/plugins" "$APPDIR/usr/lib/qt6/plugins" "$APPDIR/usr/lib/x86_64-linux-gnu/qt6/plugins"; do
     if [ -d "$plugin_root/platforms" ]; then
         export QT_PLUGIN_PATH="$plugin_root"
