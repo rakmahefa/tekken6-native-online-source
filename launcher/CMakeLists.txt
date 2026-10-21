@@ -8,6 +8,11 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 # ("tls://host:port") and T6_RELEASE_API (GitHub releases API url); official.qrc holds the pinned server certificate,
 # the rank pictures and the art. Without them the launcher builds with placeholders.
 include(${CMAKE_CURRENT_SOURCE_DIR}/official.cmake OPTIONAL)
+# The public Linux source has no private official.cmake. Give native Linux builds
+# a public release feed so the Patch notes dialog works out of the box.
+if(NOT WIN32 AND NOT T6_RELEASE_API)
+  set(T6_RELEASE_API "https://api.github.com/repos/rakmahefa/tekken6-native-online-source/releases/latest")
+endif()
 set(T6_SOURCES
     src/characters.cpp
     src/common.cpp
