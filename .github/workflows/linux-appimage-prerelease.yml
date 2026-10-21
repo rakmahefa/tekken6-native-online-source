@@ -128,6 +128,9 @@ jobs:
           set -euo pipefail
           export QMAKE="$(command -v qmake6)"
           export APPIMAGE_EXTRACT_AND_RUN=1
+          # appimagetool can mis-detect architectures in a Qt AppDir; this
+          # workflow intentionally produces a Linux x86_64 artifact.
+          export ARCH=x86_64
           APPDIR="$RUNNER_TEMP/Tekken6NativeOnline.AppDir"
           linuxdeploy-x86_64.AppImage \
             --appdir "$APPDIR" \
