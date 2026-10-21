@@ -59,6 +59,9 @@ target_compile_options(ggpo PRIVATE -w)
 if(WIN32)
     target_compile_definitions(ggpo PRIVATE _WINDOWS _WINSOCK_DEPRECATED_NO_WARNINGS _CRT_SECURE_NO_WARNINGS NOMINMAX)
     target_link_libraries(ggpo PUBLIC ws2_32 winmm)
+else()
+    find_package(Threads REQUIRED)
+    target_link_libraries(ggpo PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
 add_executable(tekken6 src/main.cpp src/tekken6_app.cpp
