@@ -35,6 +35,10 @@ using SOCKET = int;
 using HANDLE = int;
 using BOOL = int;
 using DWORD = unsigned long;
+#ifndef TRUE
+#define TRUE 1
+#define FALSE 0
+#endif
 #ifndef MAX_PATH
 #define MAX_PATH 4096
 #endif
