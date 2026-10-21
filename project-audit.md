@@ -148,4 +148,4 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 
 ## Current milestone status
 
-**Milestone 1 smoke checks passed on Ubuntu; Milestone 2 AppImage delivery is implemented and awaiting its own CI run.** Neither milestone proves full game linkage or actual gameplay until a maintainer builds locally from their own supported copy and tests a match.
+**Milestone 1 smoke checks passed on Ubuntu. Milestone 2 packaging, checksum verification and artifact upload passed on GitHub Actions run [39563204068](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563204068).** The job published the experimental GitHub prerelease [v2.1.6-test.1](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1) with the x86_64 AppImage, SHA256SUMS and local-testing instructions. The remaining acceptance gate is the maintainer's local test with their own supported game copy; neither CI milestone proves full game linkage or gameplay.
