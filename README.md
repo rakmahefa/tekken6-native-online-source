@@ -69,7 +69,7 @@ python3 builder/build_native_linux.py /path/to/extracted/Tekken6
 
 The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 before extracting or compiling it. It stores the private game copy, generated C++, CMake/Ninja cache, SDK outputs and resulting executable under the ignored `native/` and `generated/default/` paths. Subsequent builds reuse CMake/Ninja's object cache. Never commit those local files.
 
-**Current port limitations:** the full native game build and actual gameplay have not yet been verified in CI because CI intentionally has no copyrighted game image. Linux keyboard injection and Windows-only input diagnostics / profiler sampling are not implemented yet. The launcher relies on SDL for gamepad input, uses the engine's Vulkan path for GPU selection, and currently cannot hide or restore other game windows through Win32-style APIs on Linux. Treat Linux support as experimental until a local full build and real gameplay test pass.
+**Current port limitations:** CI does not build or validate the complete game because the supported `Default.xex` is intentionally not present in the public repository. A Linux SDL keyboard mapping is now implemented but still needs a full game/play test. Windows-only input diagnostics and suspended-thread profiler sampling are not ported. The launcher’s controller-capture/test UI does not yet enumerate Linux controllers, and Linux window hide/restore helpers are currently no-ops; SDL is the intended gamepad/input path and Vulkan is used for Linux GPU selection. Treat Linux support as experimental until the entire game builds from a local copy and real gameplay is tested.
 
 ## Credits
 
