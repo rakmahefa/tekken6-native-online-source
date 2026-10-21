@@ -180,9 +180,63 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  smoke-test-builder-workspace:
+    name: Inspect packaged workspace and smoke-test the Python builder
+    needs: build-appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download the exact AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Tekken6NativeOnline-linux-${{ needs.build-appimage.outputs.version }}
+          path: dist
+
+      - name: Extract AppImage and test its selected workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$GITHUB_WORKSPACE/dist/Tekken6NativeOnline-x86_64.AppImage"
+          (cd dist && sha256sum --check SHA256SUMS)
+          chmod +x "$APPIMAGE"
+
+          EXTRACT_ROOT="$RUNNER_TEMP/t6-appimage-extracted"
+          mkdir -p "$EXTRACT_ROOT"
+          (cd "$EXTRACT_ROOT" && "$APPIMAGE" --appimage-extract)
+          APPDIR="$EXTRACT_ROOT/squashfs-root"
+          BUNDLE="$APPDIR/usr/share/tekken6-native-online/workspace.tar.gz"
+          test -s "$BUNDLE"
+          test -s "$APPDIR/usr/share/tekken6-native-online/source-version"
+
+          # Point AppRun at a pre-existing workspace containing native/ data.
+          # Substitute a tiny launcher stub so this tests workspace staging
+          # without needing a display server or starting the game/GUI.
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          mkdir -p "$CUSTOM_WORKSPACE/native"
+          printf 'keep-local-native-data\n' > "$CUSTOM_WORKSPACE/native/.ci-preserve-me"
+          cat > "$APPDIR/usr/bin/tekken6-native-online" <<'STUB'
+          #!/bin/sh
+          set -eu
+          printf '%s\n' "${T6_PORT_ROOT:?AppRun did not export T6_PORT_ROOT}" > "${RUNNER_TEMP:?}/selected-workspace.txt"
+          STUB
+          chmod +x "$APPDIR/usr/bin/tekken6-native-online"
+
+          T6_WORKSPACE_DIR="$CUSTOM_WORKSPACE" "$APPDIR/AppRun"
+          test "$(cat "$RUNNER_TEMP/selected-workspace.txt")" = "$CUSTOM_WORKSPACE"
+          test -s "$CUSTOM_WORKSPACE/builder/build_native_linux.py"
+          test -f "$CUSTOM_WORKSPACE/native/.ci-preserve-me"
+          test "$(cat "$CUSTOM_WORKSPACE/native/.ci-preserve-me")" = "keep-local-native-data"
+
+          # Execute the builder from the workspace selected by AppRun. --help
+          # must work without a game image, compiler toolchain or native/game.
+          cd "$CUSTOM_WORKSPACE"
+          python3 -m py_compile builder/build_native_linux.py tools/apply_rexglue_patches.py
+          python3 builder/build_native_linux.py --help | tee "$RUNNER_TEMP/builder-help.txt"
+          grep -Fq 'builder/build_native_linux.py --update' "$RUNNER_TEMP/builder-help.txt"
+
   publish-prerelease:
     name: Publish GitHub test prerelease
-    needs: build-appimage
+    needs: [build-appimage, smoke-test-builder-workspace]
     if: ${{ needs.build-appimage.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -212,7 +266,7 @@ jobs:
 
             This prerelease contains the native Qt launcher as an AppImage plus the source/SDK workspace needed by its local builder.
 
-            No game executable or copyrighted game data is included. On first launch, the AppImage stages its source workspace into ~/.local/share/tekken6-native-online/workspace. Choose your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 ISO or extracted disc folder in the launcher; code generation and compilation happen locally.
+            No game executable or copyrighted game data is included. By default the AppImage stages its source workspace into ~/.local/share/tekken6-native-online/workspace; set T6_WORKSPACE_DIR to an absolute workspace path to reuse an existing directory. Mutable native/ game and build state is preserved when source files are refreshed. Choose your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 ISO or extracted disc folder in the launcher; code generation and compilation happen locally.
 
             The local game build requires Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan development headers and the Linux audio/window-system development packages listed in README.md.
 
