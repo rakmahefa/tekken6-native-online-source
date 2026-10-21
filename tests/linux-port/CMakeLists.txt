@@ -25,3 +25,7 @@ target_include_directories(ggpo_linux_smoke PUBLIC
 target_compile_options(ggpo_linux_smoke PRIVATE -w)
 
 add_subdirectory("${REPO_ROOT}/tools/xdvdfs" "${CMAKE_CURRENT_BINARY_DIR}/xdvdfs")
+
+# Compile the host platform boundary independently of the private game image.
+add_executable(t6_platform_smoke platform_smoke.cpp)
+target_include_directories(t6_platform_smoke PRIVATE "${REPO_ROOT}/src")
