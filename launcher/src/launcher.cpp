@@ -515,7 +515,7 @@ void Launcher::refreshAll()
 	m_pillBadge->setPixmap(pillIcon.isNull() ? QPixmap() : pillIcon.scaled(75, 36, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 	m_pillBadge->setVisible(!pillIcon.isNull());
 	m_profileBtn->setFixedSize(m_profileBtn->layout()->sizeHint());  // (the button has no text of its own)
-	m_profileBtn->setToolTip(m_authed && !m_guest ? rankName() : T("Local profile (offline account data)"));
+	m_profileBtn->setToolTip(!m_authed ? T("Local profile (offline account data)") : m_guest ? T("Guest profile") : rankName());
 	m_profileBtn->setEnabled(true);
 	fitNav();  // (the name changes the room the nav has)
 	refreshCostume();  // (the Customize look button follows the game's state)
