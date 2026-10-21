@@ -108,6 +108,17 @@ if [[ "$FOUND_WAYLAND" -ne 1 ]]; then
     echo "Qt Wayland platform plugins were not installed at $QT_PLUGIN_ROOT/platforms" >&2
     exit 5
 fi
+
+# The headless CI smoke test uses Qt's offscreen QPA backend; it is also handy
+# for troubleshooting installations without a running X11/Wayland session.
+OFFSCREEN_PLUGIN="$QT_PLUGIN_ROOT/platforms/libqoffscreen.so"
+if [[ ! -s "$OFFSCREEN_PLUGIN" ]]; then
+    echo "Qt offscreen platform plugin was not installed at $OFFSCREEN_PLUGIN" >&2
+    exit 5
+fi
+install -D -m 0755 "$OFFSCREEN_PLUGIN" "$APPDIR/usr/plugins/platforms/libqoffscreen.so"
+APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" --appdir "$APPDIR" --library "$OFFSCREEN_PLUGIN"
+
 if [[ ! -s "$SVG_ICON_PLUGIN" ]]; then
     echo "Qt SVG icon engine was not installed at $SVG_ICON_PLUGIN" >&2
     exit 5
@@ -131,6 +142,7 @@ done
 # Fail the package build if any plugin that the current launcher uses did not
 # make it into the AppDir. These checks also protect future packaging changes.
 test -s "$APPDIR/usr/plugins/platforms/libqxcb.so"
+test -s "$APPDIR/usr/plugins/platforms/libqoffscreen.so"
 find "$APPDIR/usr/plugins/platforms" -maxdepth 1 -type f -name 'libqwayland*.so' -print -quit | grep -q .
 test -s "$APPDIR/usr/plugins/imageformats/libqsvg.so"
 test -s "$APPDIR/usr/plugins/iconengines/libqsvgicon.so"
