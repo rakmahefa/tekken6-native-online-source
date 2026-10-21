@@ -14,6 +14,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <strings.h>
 #include <dlfcn.h>
 #include <cpuid.h>
 #include <pthread.h>
@@ -133,7 +135,9 @@ inline BOOL MoveFileExA(const char* from, const char* to, DWORD)
 #endif
 
 // MSVC-compatible CPUID output order used by the diagnostic / input code.
-#ifndef __cpuid
+#ifdef __cpuid
+#undef __cpuid
+#endif
 #define __cpuid(info, leaf) do { \
    unsigned int __a = 0, __b = 0, __c = 0, __d = 0; \
    __cpuid_count(static_cast<unsigned int>(leaf), 0, __a, __b, __c, __d); \
