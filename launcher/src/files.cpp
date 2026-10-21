@@ -5,6 +5,20 @@
 // Root: the folder with the native build, source tree and player-side builder.
 QString root()
 {
+	// AppImage's SquashFS mount is read-only. AppRun stages the source tree and
+	// build workspace in the user's writable data directory and passes it here.
+	const QString portRoot = qEnvironmentVariable("T6_PORT_ROOT").trimmed();
+	if (!portRoot.isEmpty()) {
+		const QDir candidate(portRoot);
+#if defined(_WIN32)
+		const bool valid = QFile::exists(candidate.filePath("builder/build_native.py"));
+#else
+		const bool valid = QFile::exists(candidate.filePath("builder/build_native_linux.py"));
+#endif
+		if (valid)
+			return QFileInfo(candidate.absolutePath()).canonicalFilePath();
+	}
+
 	QDir d(QCoreApplication::applicationDirPath());
 	for (int i = 0; i < 4; i++)
 	{
