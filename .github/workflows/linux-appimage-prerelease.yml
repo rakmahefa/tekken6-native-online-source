@@ -1,0 +1,170 @@
+name: Linux AppImage prerelease
+
+on:
+  push:
+    branches:
+      - feature/native-linux-build
+    tags:
+      - 'v*-test.*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Test prerelease version (for example 0.1.0-test.1)"
+        required: true
+        default: "0.1.0-test.1"
+        type: string
+      publish_prerelease:
+        description: "Publish the successfully built AppImage as a GitHub prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-appimage:
+    name: Build Linux AppImage and CI artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - name: Checkout source and pinned ReXGlue submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux launcher build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang cmake ninja-build qt6-base-dev libxkbcommon-dev \
+            curl file squashfs-tools desktop-file-utils
+
+      - name: Compute test-channel version
+        id: meta
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          DISPATCH_PUBLISH: ${{ inputs.publish_prerelease }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            TAG="$GITHUB_REF_NAME"
+            VERSION="${TAG#v}"
+            PUBLISH=true
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$DISPATCH_VERSION"
+            TAG="v$VERSION"
+            PUBLISH="$DISPATCH_PUBLISH"
+          else
+            VERSION="0.0.0-test.${GITHUB_RUN_NUMBER}"
+            TAG=""
+            PUBLISH=false
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$ ]]; then
+            echo "Expected a prerelease version such as 0.1.0-test.1; got '$VERSION'." >&2
+            exit 2
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "Building test-channel AppImage version $VERSION (publish=$PUBLISH)."
+
+      - name: Download linuxdeploy, Qt plugin and appimagetool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/appimage-tools
+          curl --fail --location --retry 3 \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
+            --output build/appimage-tools/linuxdeploy-x86_64.AppImage
+          curl --fail --location --retry 3 \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage \
+            --output build/appimage-tools/linuxdeploy-plugin-qt-x86_64.AppImage
+          curl --fail --location --retry 3 \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
+            --output build/appimage-tools/appimagetool-x86_64.AppImage
+          chmod +x build/appimage-tools/*.AppImage
+          bash -n tools/build_appimage.sh packaging/appimage/AppRun
+
+      - name: Assemble AppImage
+        env:
+          T6_APPIMAGE_VERSION: ${{ steps.meta.outputs.version }}
+          T6_APPIMAGE_SOURCE_VERSION: ${{ steps.meta.outputs.version }}-${{ github.sha }}
+          T6_APPIMAGE_BUILD_DIR: ${{ github.workspace }}/build/appimage
+          T6_APPIMAGE_OUT_DIR: ${{ github.workspace }}/dist
+          LINUXDEPLOY_BIN: ${{ github.workspace }}/build/appimage-tools/linuxdeploy-x86_64.AppImage
+          APPIMAGETOOL_BIN: ${{ github.workspace }}/build/appimage-tools/appimagetool-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: bash tools/build_appimage.sh
+
+      - name: Verify AppImage and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/Tekken6NativeOnline-x86_64.AppImage
+          test -x dist/Tekken6NativeOnline-x86_64.AppImage
+          file dist/Tekken6NativeOnline-x86_64.AppImage
+          grep -q 'ELF' <(file dist/Tekken6NativeOnline-x86_64.AppImage)
+          (cd dist && sha256sum --check SHA256SUMS)
+          desktop-file-validate build/appimage/AppDir/usr/share/applications/tekken6-native-online.desktop
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekken6NativeOnline-linux-${{ steps.meta.outputs.version }}
+          path: |
+            dist/Tekken6NativeOnline-x86_64.AppImage
+            dist/SHA256SUMS
+            dist/README-linux-appimage.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-prerelease:
+    name: Publish GitHub test prerelease
+    needs: build-appimage
+    if: ${{ needs.build-appimage.outputs.publish == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download built AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Tekken6NativeOnline-linux-${{ needs.build-appimage.outputs.version }}
+          path: dist
+
+      - name: Create or update GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-appimage.outputs.tag }}
+          target_commitish: ${{ github.ref_name }}
+          name: "Tekken 6 Native Online Linux ${{ needs.build-appimage.outputs.version }}"
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/Tekken6NativeOnline-x86_64.AppImage
+            dist/SHA256SUMS
+            dist/README-linux-appimage.txt
+          body: |
+            ## Experimental native Linux test build
+
+            This prerelease contains the native Qt launcher as an AppImage plus the source/SDK workspace needed by its local builder.
+
+            No game executable or copyrighted game data is included. On first launch, the AppImage stages its source workspace into ~/.local/share/tekken6-native-online/workspace. Choose your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 ISO or extracted disc folder in the launcher; code generation and compilation happen locally.
+
+            The local game build requires Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan development headers and the Linux audio/window-system development packages listed in README.md.
+
+            This is a prerelease for local testing, not a gameplay-verified release. Please report startup, build, audio, controller and gameplay results before promoting it to a stable release.
