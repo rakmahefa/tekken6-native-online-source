@@ -121,4 +121,23 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 
 **In progress — not release-ready.** The structural POSIX paths and isolated CI checks are implemented, but milestone acceptance still depends on clean CI results for the GGPO/platform and Qt launcher jobs, followed by a maintainer's full local build and gameplay test from their own supported game copy.
 
-The next milestone after this one is the requested cached Linux release workflow and the separate GitHub Release/AppImage deployment workflow.
+## Milestone 2 — AppImage artifact and GitHub prerelease
+
+Branch: `feature/linux-appimage-prerelease`
+
+### Intended workflow
+
+- Compile the Qt launcher on Ubuntu 24.04, then use linuxdeploy and its Qt plugin to assemble a native x86_64 AppImage.
+- Embed the public source tree, builder tools and pinned ReXGlue SDK, but exclude game images, extracted data, `native/`, generated game-specific C++, local logs/settings and any untracked official endpoint/certificate/art bundle.
+- Use an AppRun bootstrap to copy the immutable payload to a writable per-user project folder (`$XDG_DATA_HOME/tekken6-native-online`) before opening the launcher. This is required because the game builder creates its generated sources, game output and incremental cache and cannot work inside the read-only AppImage mount.
+- Upload the AppImage, SHA-256 checksum and pre-release test notes as an Actions artifact for every PR/push build.
+- Publish a GitHub prerelease only for `linux-vX.Y.Z-preview.N` tags or an explicit manual workflow dispatch with release publishing enabled; do not publish from pull-request events.
+- Attach the AppImage, checksum and test notes, and clearly state that the game is not included and gameplay is not yet verified.
+
+### Release acceptance boundary
+
+The AppImage workflow validates the launcher packaging only; it does not pretend to build the full game in CI because the user-owned supported game image is not present. The user must test AppImage startup, local copy validation, code generation, the full local compile/link and actual game startup. Official matchmaking configuration/assets remain absent from public CI.
+
+The workflow and AppRun are authored on the milestone 2 branch but their first Actions run has not yet been evaluated. Any packaging/tool download or Qt runtime issues found by that run must be fixed before considering this workflow ready.
+
+After the manual local test passes, the next release milestone can address runtime/gameplay fixes and a final release workflow rather than publishing the current build as stable.
