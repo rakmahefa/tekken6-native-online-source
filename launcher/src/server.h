@@ -11,3 +11,5 @@ struct ServerAddr
 };
 ServerAddr serverAddr();
 const QSslCertificate& pinnedCert();
+// False for the public placeholder endpoint or a TLS endpoint without its pinned certificate.
+bool serverConfigured();
