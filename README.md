@@ -74,7 +74,7 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 ### AppImage pre-release (Milestone 2)
 
-The workflow `.github/workflows/linux-appimage-prerelease.yml` builds an x86_64 AppImage, uploads it as a 14-day Actions artifact, and publishes an experimental GitHub prerelease when a matching preview tag is pushed or the workflow is manually dispatched with prerelease publishing enabled.
+The workflow `.github/workflows/linux-appimage-prerelease.yml` builds an x86_64 AppImage, uploads it as a 14-day Actions artifact, and publishes an experimental GitHub prerelease when a matching preview tag is pushed or the workflow is manually dispatched with prerelease publishing enabled. For an intentional one-off preview from `feature/linux-appimage-prerelease`, include `[publish-prerelease]` in the commit message; the workflow creates a unique `linux-v0.1.0-preview.<run number>` tag after the build and uploads the verified artifact.
 
 For manual testing, download **`Tekken6-Native-Online-linux-x86_64.AppImage`** and its `.sha256` file from the Actions run artifact or from a `linux-vX.Y.Z-preview.N` GitHub prerelease. Check the checksum, then run:
 
