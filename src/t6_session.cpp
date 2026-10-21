@@ -1,6 +1,9 @@
 // Tekken 6 netplay - GGPO session (configuration, callbacks, practice pace, battle dump) (split out of t6_netplay.cpp, see the overview there)
 
 #include "t6_netplay_internal.h"
+#if !defined(_WIN32)
+#include <SDL3/SDL.h>
+#endif
 
 // ---- GGPO session (online plan step 4; port of the PS3 rb_net.cpp) ----
 // Like SF4 Ember: the game runs its offline Versus, the pad reads of both players (XamInputGetState of users 0 / 1) get
@@ -1063,10 +1066,98 @@ uint16_t KeyboardButtons() {
 }
 
 #else
-// The Windows VK-based keyboard overlay is not used by the Linux build yet.
-// SDL keyboard integration will replace this fallback in the launcher port.
-bool KeyDown(int, bool) { return false; }
-uint16_t KeyboardButtons() { return 0; }
+// SDL key polling keeps the existing T6_NET_KEYS layouts and custom virtual-key
+// map on Linux. The launcher converts captured Qt keys to Windows VK values so
+// existing player profiles remain portable between Windows and Linux.
+static SDL_Scancode T6ScancodeFromVk(int vk)
+{
+  if (vk >= 'A' && vk <= 'Z')
+    return static_cast<SDL_Scancode>(SDL_SCANCODE_A + (vk - 'A'));
+  if (vk >= '1' && vk <= '9')
+    return static_cast<SDL_Scancode>(SDL_SCANCODE_1 + (vk - '1'));
+  switch (vk) {
+    case '0': return SDL_SCANCODE_0;
+    case VK_BACK: return SDL_SCANCODE_BACKSPACE;
+    case VK_TAB: return SDL_SCANCODE_TAB;
+    case VK_RETURN: return SDL_SCANCODE_RETURN;
+    case VK_ESCAPE: return SDL_SCANCODE_ESCAPE;
+    case VK_SPACE: return SDL_SCANCODE_SPACE;
+    case VK_PRIOR: return SDL_SCANCODE_PAGEUP;
+    case VK_NEXT: return SDL_SCANCODE_PAGEDOWN;
+    case VK_END: return SDL_SCANCODE_END;
+    case VK_HOME: return SDL_SCANCODE_HOME;
+    case VK_LEFT: return SDL_SCANCODE_LEFT;
+    case VK_UP: return SDL_SCANCODE_UP;
+    case VK_RIGHT: return SDL_SCANCODE_RIGHT;
+    case VK_DOWN: return SDL_SCANCODE_DOWN;
+    case VK_INSERT: return SDL_SCANCODE_INSERT;
+    case VK_DELETE: return SDL_SCANCODE_DELETE;
+    case VK_NUMPAD0: return SDL_SCANCODE_KP_0;
+    case VK_NUMPAD1: return SDL_SCANCODE_KP_1;
+    case VK_NUMPAD2: return SDL_SCANCODE_KP_2;
+    case VK_NUMPAD3: return SDL_SCANCODE_KP_3;
+    case VK_NUMPAD4: return SDL_SCANCODE_KP_4;
+    case VK_NUMPAD5: return SDL_SCANCODE_KP_5;
+    case VK_NUMPAD6: return SDL_SCANCODE_KP_6;
+    case VK_NUMPAD7: return SDL_SCANCODE_KP_7;
+    case VK_NUMPAD8: return SDL_SCANCODE_KP_8;
+    case VK_NUMPAD9: return SDL_SCANCODE_KP_9;
+    case VK_ADD: return SDL_SCANCODE_KP_PLUS;
+    case VK_SUBTRACT: return SDL_SCANCODE_KP_MINUS;
+    default:
+      if (vk >= 0x70 && vk <= 0x7B)
+        return static_cast<SDL_Scancode>(SDL_SCANCODE_F1 + (vk - 0x70));
+      return SDL_SCANCODE_UNKNOWN;
+  }
+}
+
+bool KeyDown(int vk, bool focus)
+{
+  if (!focus)
+    return false;
+  int count = 0;
+  const bool* state = SDL_GetKeyboardState(&count);
+  const SDL_Scancode code = T6ScancodeFromVk(vk);
+  const int index = static_cast<int>(code);
+  return state && code != SDL_SCANCODE_UNKNOWN && index >= 0 && index < count && state[index];
+}
+
+uint16_t KeyboardButtons()
+{
+  uint16_t b = 0;
+  static const int keys = T6EnvInt("T6_NET_KEYS", 1);
+  struct Key { int vk; uint16_t bit; };
+  static const std::vector<Key> custom = [] {
+    std::vector<Key> out;
+    T6ForEachPair(T6Env("T6_KEYMAP"), ':', [&](const std::string& vk, const std::string& bits) {
+      out.push_back({static_cast<int>(std::strtoul(vk.c_str(), nullptr, 16)),
+                     static_cast<uint16_t>(std::strtoul(bits.c_str(), nullptr, 16))});
+    });
+    return out;
+  }();
+  if (keys != 1 && keys != 2 && keys != 3)
+    return 0;
+
+  SDL_PumpEvents();
+  static const bool global = T6Env("T6_NET_KEYS_GLOBAL") != nullptr;
+  const bool focus = global || SDL_GetKeyboardFocus() != nullptr;
+  if (keys == 3) {
+    for (const Key& key : custom)
+      if (KeyDown(key.vk, focus)) b |= key.bit;
+    return b;
+  }
+  static const Key set1[] = {
+      {'W', 0x0001}, {'S', 0x0002}, {'A', 0x0004}, {'D', 0x0008},
+      {VK_RETURN, 0x0010}, {VK_BACK, 0x0020}, {'J', 0x1000}, {'K', 0x2000},
+      {'U', 0x4000}, {'I', 0x8000}};
+  static const Key set2[] = {
+      {VK_UP, 0x0001}, {VK_DOWN, 0x0002}, {VK_LEFT, 0x0004}, {VK_RIGHT, 0x0008},
+      {VK_ADD, 0x0010}, {VK_SUBTRACT, 0x0020}, {VK_NUMPAD1, 0x1000}, {VK_NUMPAD2, 0x2000},
+      {VK_NUMPAD4, 0x4000}, {VK_NUMPAD5, 0x8000}};
+  for (const Key& key : keys == 1 ? set1 : set2)
+    if (KeyDown(key.vk, focus)) b |= key.bit;
+  return b;
+}
 #endif
 
 }  // namespace t6np
