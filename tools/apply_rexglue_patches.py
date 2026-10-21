@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -65,16 +66,39 @@ def apply_portable_sdk_exports(sdk: Path) -> bool:
         'if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git" AND '
         'NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/.git")'
     )
-    if git_only_check in cmake_text:
+    active_lines = [line.strip() for line in cmake_text.splitlines()]
+    if git_only_check in active_lines:
         cmake_text = cmake_text.replace(git_only_check, archive_aware_check)
         thirdparty_cmake.write_text(cmake_text, encoding="utf-8")
         print("thirdparty/CMakeLists.txt: validate nested submodules only for a Git SDK checkout")
-    elif archive_aware_check in cmake_text:
+    elif archive_aware_check in active_lines:
         print("thirdparty/CMakeLists.txt: source-archive submodule check already fixed")
     else:
-        print("thirdparty/CMakeLists.txt: expected nested-submodule check not found; leaving it untouched",
-              file=sys.stderr)
-        return False
+        # The user's earlier workaround commented this entire loop out manually.
+        # Restore a minimal archive-aware loop so the workspace becomes reproducible.
+        manual_block = re.compile(
+            r"(?ms)^#\\s*foreach\\(submodule \\$\\{REQUIRED_SUBMODULES\\}\\)\\s*\\n"
+            r"(?:^#.*\\n)*?"
+            r"^#\\s*endforeach\\(\\)\\s*$"
+        )
+        replacement = (
+            "foreach(submodule ${REQUIRED_SUBMODULES})\\n"
+            "    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.git AND "
+            "NOT EXISTS \"\\${CMAKE_CURRENT_SOURCE_DIR}/\\${submodule}/.git\")\\n"
+            "        message(FATAL_ERROR\\n"
+            "            \"Git submodule '\\${submodule}' is not initialized.\\n\"\\n"
+            "            \"Please run: git submodule update --init --recursive\\n\"\\n"
+            "            \"from the repository root directory.\")\\n"
+            "    endif()\\n"
+            "endforeach()"
+        )
+        cmake_text, count = manual_block.subn(replacement, cmake_text, count=1)
+        if count != 1:
+            print("thirdparty/CMakeLists.txt: expected nested-submodule check not found; leaving it untouched",
+                  file=sys.stderr)
+            return False
+        thirdparty_cmake.write_text(cmake_text, encoding="utf-8")
+        print("thirdparty/CMakeLists.txt: restored manually commented check with source-archive support")
 
     export_header = sdk / "include" / "rex" / "t6_export.h"
     export_header.parent.mkdir(parents=True, exist_ok=True)
