@@ -17,8 +17,13 @@ void Launcher::checkForUpdate()
 	QPointer<Launcher> self(this);
 	std::thread([self, api] {
 		QByteArray body;
-		if (httpGet(api.c_str(), body) != 200)
+		const int status = httpGet(api.c_str(), body);
+		if (status != 200)
+		{
+			qWarning().noquote() << "GitHub release check failed (HTTP status" << status << "):" << QString::fromStdWString(api);
 			return;
+		}
+		qInfo() << "GitHub release feed reachable (HTTP 200).";
 		const QJsonDocument doc = QJsonDocument::fromJson(body);
 		QJsonObject rel = doc.object();
 		if (doc.isArray())  // (a list: the highest version that has the patch zip)
