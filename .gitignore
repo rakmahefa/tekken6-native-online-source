@@ -5,6 +5,7 @@
 /generated/default/*
 !/generated/default/.gitkeep
 /build/
+/dist/
 /out/
 /runs/
 /native/
@@ -12,6 +13,7 @@
 /tekken6_config.toml
 /toolchain/
 *.log
+*.AppImage
 # The official build's settings and assets (lobby server, release repository, pinned certificate, rank pictures, art)
 /launcher/official.cmake
 /launcher/official.qrc
