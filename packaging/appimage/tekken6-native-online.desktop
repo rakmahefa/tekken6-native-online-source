@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tekken 6 Native Online
+Comment=Native Linux launcher and local game builder
+Exec=AppRun
+Icon=tekken6-native-online
+Terminal=false
+Categories=Game;
+StartupNotify=true
