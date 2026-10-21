@@ -66,14 +66,15 @@ void Launcher::refreshGameFiles()
 
 QString Launcher::builderPython() const
 {
+#if defined(_WIN32)
 	QString bundled = rootFile("builder/python/python.exe");
 	if (QFile::exists(bundled))
 		return bundled;
-	// (development tree: the PC's own Python.) Never the Microsoft Store stub in WindowsApps: it only prints "Python
-	// was not found" and ends with code 9009 - a player whose builder\python was missing (antivirus, a package
-	// that was not extracted whole) got "exit code 9009, see the log" instead of "the builder is missing" (2026-10-13)
 	const QString sys = QStandardPaths::findExecutable("python");
 	return sys.contains("WindowsApps", Qt::CaseInsensitive) ? QString() : sys;
+#else
+	return QStandardPaths::findExecutable("python3");
+#endif
 }
 
 void Launcher::chooseCopy()
@@ -89,9 +90,14 @@ void Launcher::chooseCopy()
 		refreshGameFiles();
 		return;
 	}
-	if (!QFile::exists(rootFile("builder/build_native.py")) || builderPython().isEmpty())
+#if defined(_WIN32)
+	const QString buildScript = rootFile("builder/build_native.py");
+#else
+	const QString buildScript = rootFile("builder/build_native_linux.py");
+#endif
+	if (!QFile::exists(buildScript) || builderPython().isEmpty())
 	{
-		m_buildError = T("the builder is missing (builder\\build_native.py, builder\\python) – extract the whole package");
+		m_buildError = T("the native game builder or Python 3 is missing – extract the whole package and install the build dependencies");
 		refreshGameFiles();
 		return;
 	}
@@ -140,7 +146,12 @@ void Launcher::runBuilder(const QStringList& args)
 	m_builder->setWorkingDirectory(root());
 	m_builder->setProcessChannelMode(QProcess::MergedChannels);
 	m_builder->setProgram(builderPython());
-	m_builder->setArguments(QStringList{"-u", "-X", "utf8", QDir::toNativeSeparators(rootFile("builder/build_native.py"))} + args);
+#if defined(_WIN32)
+	const QString buildScript = rootFile("builder/build_native.py");
+#else
+	const QString buildScript = rootFile("builder/build_native_linux.py");
+#endif
+	m_builder->setArguments(QStringList{"-u", "-X", "utf8", QDir::toNativeSeparators(buildScript)} + args);
 	// no console window of Python
 #if defined(_WIN32)
 	m_builder->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* a) { a->flags |= CREATE_NO_WINDOW; });
