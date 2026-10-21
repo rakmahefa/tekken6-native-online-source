@@ -119,7 +119,14 @@ void Launcher::showPatchNotes()
 		view->setMarkdown(m_patchNotes);
 		return;
 	}
-	std::wstring api(kReleaseApi);
+	const bool apiOverride = qEnvironmentVariableIsSet("T6_UPDATE_API");
+	std::wstring api = apiOverride ? qEnvironmentVariable("T6_UPDATE_API").toStdWString() : std::wstring(kReleaseApi);
+	if (api.empty())
+	{
+		view->setPlainText(T("The GitHub releases API is not configured in this build."));
+		return;
+	}
+	// Patch notes need a list of releases; /releases/latest omits prereleases, which are the test channel.
 	if (api.size() > 7 && api.compare(api.size() - 7, 7, L"/latest") == 0)
 		api = api.substr(0, api.size() - 7) + L"?per_page=15";
 	QPointer<Launcher> self(this);
@@ -127,22 +134,44 @@ void Launcher::showPatchNotes()
 	std::thread([self, target, api] {
 		QByteArray body;
 		QString md;
-		if (httpGet(api.c_str(), body) == 200)
-			for (const QJsonValue r : QJsonDocument::fromJson(body).array())
+		QString failure;
+		const int status = httpGet(api.c_str(), body);
+		if (status != 200)
+		{
+			failure = status == 0
+			              ? T("Could not reach GitHub's releases API (network, DNS or TLS failure).")
+			              : T("GitHub's releases API returned HTTP %1.").arg(status);
+			qWarning().noquote() << "Patch-notes request failed:" << status << QString::fromStdWString(api);
+		}
+		else
+		{
+			QJsonParseError parseError{};
+			const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+			if (!doc.isArray())
 			{
-				const QJsonObject o = r.toObject();
-				const QString tag = o.value("tag_name").toString();
-				if (o.value("draft").toBool() || versionKey(tag) > versionKey(kVersion) || tag.contains("-test") != testChannel())
-					continue;
-				md += QString("## %1  ·  %2\n\n%3\n\n---\n\n")
-				          .arg(tag, o.value("published_at").toString().left(10), o.value("body").toString().trimmed());
+				failure = T("GitHub responded, but the releases response was invalid.");
+				qWarning().noquote() << "Patch-notes JSON was not an array:" << parseError.errorString();
 			}
-		QMetaObject::invokeMethod(qApp, [self, target, md] {
+			else
+			{
+				for (const QJsonValue r : doc.array())
+				{
+					const QJsonObject o = r.toObject();
+					const QString tag = o.value("tag_name").toString();
+					if (o.value("draft").toBool() || versionKey(tag) > versionKey(kVersion) || tag.contains("-test") != testChannel())
+						continue;
+					md += QString("## %1  ·  %2\n\n%3\n\n---\n\n")
+					          .arg(tag, o.value("published_at").toString().left(10), o.value("body").toString().trimmed());
+				}
+				if (md.isEmpty())
+					failure = T("GitHub is reachable, but no release notes match this channel and version.");
+			}
+		}
+		QMetaObject::invokeMethod(qApp, [self, target, md, failure] {
 			if (self && !md.isEmpty())
 				self->m_patchNotes = md;
 			if (target)
-				md.isEmpty() ? target->setPlainText(T("Could not load the patch notes (no connection to GitHub)."))
-				             : target->setMarkdown(md);
+				md.isEmpty() ? target->setPlainText(failure) : target->setMarkdown(md);
 		}, Qt::QueuedConnection);
 	}).detach();
 }
