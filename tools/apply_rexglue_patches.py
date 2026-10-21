@@ -85,7 +85,7 @@ def apply_portable_sdk_exports(sdk: Path) -> bool:
         "#if defined(_WIN32)\n"
         "#define REX_T6_EXPORT __declspec(dllexport)\n"
         "#else\n"
-        "#define REX_T6_EXPORT __attribute__((visibility(\\"default\\")))\n"
+        "#define REX_T6_EXPORT __attribute__((visibility(\"default\")))\n"
         "#endif\n"
     )
     if not export_header.is_file() or export_header.read_text(encoding="utf-8") != export_content:
