@@ -117,6 +117,8 @@ jobs:
 
       - name: Verify AppImage and checksum
         shell: bash
+        env:
+          T6_APPIMAGE_VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           test -s dist/Tekken6NativeOnline-x86_64.AppImage
@@ -125,6 +127,10 @@ jobs:
           grep -q 'ELF' <(file dist/Tekken6NativeOnline-x86_64.AppImage)
           (cd dist && sha256sum --check SHA256SUMS)
           desktop-file-validate build/appimage/AppDir/usr/share/applications/tekken6-native-online.desktop
+          # Assert that the public release feed and this exact prerelease version were compiled in.
+          grep -Fq 'api.github.com/repos/rakmahefa/tekken6-native-online-source/releases/latest' build/appimage/launcher/build.ninja
+          grep -Fq 'T6_VERSION' build/appimage/launcher/build.ninja
+          grep -Fq "$T6_APPIMAGE_VERSION" build/appimage/launcher/build.ninja
           # Wayland QPA loads these from plugin categories separate from platforms/.
           test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libxdg-shell.so
           test -s build/appimage/AppDir/usr/plugins/wayland-shell-integration/libwl-shell-plugin.so
@@ -154,6 +160,11 @@ jobs:
             "$log"; then
             cat "$log"
             echo "AppImage is missing a required Qt image/platform/TLS component." >&2
+            exit 1
+          fi
+          if ! grep -q 'GitHub release feed reachable (HTTP 200)' "$log"; then
+            cat "$log"
+            echo "The bundled Qt networking/TLS runtime could not reach the configured GitHub release feed." >&2
             exit 1
           fi
           cat "$log"
