@@ -79,6 +79,12 @@ ln -sfn usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg "$APPDIR
 # Reinstall it after deployment as linuxdeploy may create/adjust entry-point links.
 install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 
+# Install AppRun before linuxdeploy. The desktop entry uses Exec=AppRun,
+# and linuxdeploy validates that executable while deploying desktop files.
+# Keeping our launcher in place also ensures the writable workspace staging
+# logic survives Qt deployment instead of being replaced by a generated stub.
+install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
+
 # linuxdeploy bundles shared libraries and Qt plugins; appimagetool is invoked
 # separately so the custom AppRun (which stages the writable source workspace)
 # is guaranteed to be the entry point embedded in the final image.
@@ -90,7 +96,6 @@ PATH="$TOOL_DIR:$PATH" APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg" \
     --plugin qt
 
-install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 cp "$ROOT/packaging/appimage/tekken6-native-online.desktop" "$APPDIR/tekken6-native-online.desktop"
 chmod 0755 "$APPDIR/usr/bin/tekken6-native-online"
 rm -f "$OUT_DIR/Tekken6NativeOnline-x86_64.AppImage"
