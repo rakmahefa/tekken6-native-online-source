@@ -39,6 +39,35 @@ using HWND = void*;
 #define TRUE 1
 #define FALSE 0
 #endif
+#ifndef VK_BACK
+#define VK_BACK 0x08
+#define VK_TAB 0x09
+#define VK_RETURN 0x0D
+#define VK_ESCAPE 0x1B
+#define VK_SPACE 0x20
+#define VK_PRIOR 0x21
+#define VK_NEXT 0x22
+#define VK_END 0x23
+#define VK_HOME 0x24
+#define VK_LEFT 0x25
+#define VK_UP 0x26
+#define VK_RIGHT 0x27
+#define VK_DOWN 0x28
+#define VK_INSERT 0x2D
+#define VK_DELETE 0x2E
+#define VK_NUMPAD0 0x60
+#define VK_NUMPAD1 0x61
+#define VK_NUMPAD2 0x62
+#define VK_NUMPAD3 0x63
+#define VK_NUMPAD4 0x64
+#define VK_NUMPAD5 0x65
+#define VK_NUMPAD6 0x66
+#define VK_NUMPAD7 0x67
+#define VK_NUMPAD8 0x68
+#define VK_NUMPAD9 0x69
+#define VK_ADD 0x6B
+#define VK_SUBTRACT 0x6D
+#endif
 #ifndef THREAD_PRIORITY_ABOVE_NORMAL
 #define THREAD_PRIORITY_ABOVE_NORMAL 1
 #endif
