@@ -11,6 +11,13 @@ void Launcher::connectServer()
 		m_tcp->deleteLater();
 	}
 	m_online = m_connected = m_authed = false;
+	if (!serverConfigured())
+	{
+		// Public Linux builds intentionally omit the official endpoint and certificate pin.
+		// Stay in an explicit offline state instead of repeatedly resolving the placeholder host.
+		refreshAll();
+		return;
+	}
 	const ServerAddr addr = serverAddr();
 	auto* sock = new QSslSocket(this);
 	m_tcp = sock;
@@ -58,7 +65,7 @@ void Launcher::serverLost()
 	m_queued = false;
 	m_lobbies = {};
 	refreshAll();
-	if (!m_reconnect)
+	if (serverConfigured() && !m_reconnect)
 	{
 		m_reconnect = true;
 		QTimer::singleShot(was ? 2000 : 5000, this, [this] {
