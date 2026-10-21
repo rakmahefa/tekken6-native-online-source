@@ -1,8 +1,8 @@
-// Tekken 6 Native Online launcher - Game processes: ended together with the launcher, leftovers of an earlier launcher.
-
+// Tekken 6 Native Online launcher - lifecycle helpers for the game process.
 #include "processes.h"
 #include "files.h"
 
+#if defined(_WIN32)
 // A game process ends with the launcher, however the launcher ends (crash, Task Manager): it is put into a job object
 // that kills its processes when its last handle closes = when the launcher process is gone (2026-10-17: a player's
 // launcher went away, its game stayed parked on UDP 7000 reading the same cmd.txt as the next launcher's game - none
@@ -53,3 +53,39 @@ int endLeftoverGames()
 		CloseHandle(snap);
 	return n;
 }
+
+#else
+#include <csignal>
+#include <cerrno>
+#include <unistd.h>
+
+// On Linux the child process sets PR_SET_PDEATHSIG in QProcess's child setup.
+// This callback remains as the common Windows/Linux API; Linux needs no job
+// object once that parent-death signal is installed before exec().
+void endWithLauncher(qint64 pid)
+{
+	Q_UNUSED(pid);
+}
+
+int endLeftoverGames()
+{
+	const QString target = QFileInfo(gameExe()).canonicalFilePath();
+	if (target.isEmpty())
+		return 0;
+	int ended = 0;
+	QDir proc(QStringLiteral("/proc"));
+	const QStringList entries = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+	for (const QString& entry : entries) {
+		bool ok = false;
+		const qint64 pid = entry.toLongLong(&ok);
+		if (!ok || pid <= 0 || pid == QCoreApplication::applicationPid())
+			continue;
+		const QString executable = QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid)).symLinkTarget();
+		if (executable.isEmpty() || QFileInfo(executable).canonicalFilePath() != target)
+			continue;
+		if (::kill(static_cast<pid_t>(pid), SIGTERM) == 0)
+			++ended;
+	}
+	return ended;
+}
+#endif
