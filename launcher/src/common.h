@@ -24,6 +24,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 using DWORD = quint32;
+using ULONGLONG = quint64;
 using WORD = quint16;
 using BYTE = quint8;
 using LONG = qint32;
