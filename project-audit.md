@@ -1,81 +1,119 @@
-# Project audit — native Linux build and AppImage
+# Milestone 1 — native Linux port plan and audit
 
 Date: 2026-10-21  
-Base branch: `main` (`e61f084be5d062c96389b8e8cb9fc4dc5fedaed4`)  
-Work branch: `feature/native-linux-build`
+Base: `main` at `e61f084be5d062c96389b8e8cb9fc4dc5fedaed4`  
+Implementation branch: `feature/native-linux-build`  
+Milestone PR: [#1](https://github.com/rakmahefa/tekken6-native-online-source/pull/1)
 
-## Executive summary
+## Objective and definition of done
 
-**Status: blocked for a truthful, working Linux release pipeline until native Linux support is implemented.** The repository has CMake and its ReXGlue SDK submodule supports Linux/Vulkan, but the application-specific game target, GGPO fork, launcher and player-side builder remain Windows-oriented. Adding packaging YAML alone would result in a red workflow or, worse, an artifact that looks like a Linux release but cannot launch the game.
+Port the existing Windows-oriented application to a native Linux build without regressing Windows. Split work into four layers — GGPO/platform utilities, engine/runtime, player-side builder, and Qt launcher — and validate each layer independently on Ubuntu.
 
-The repository explicitly does not contain the game image or generated game sources. The player is expected to provide their own supported Tekken 6 Xbox 360 copy; generated code and extracted game data are intentionally excluded from version control. CI must not embed a copyrighted game image, generated game code, game data or save data in a public artifact.
+Milestone 1 is complete only when:
+1. the isolated native components compile in clean CI;
+2. the Qt launcher builds and links natively on Linux;
+3. the Linux player-side builder passes syntax/argument checks and can configure/codegen/build from a user's own supported game copy;
+4. all engine platform compatibility APIs compile with the SDK target, and the whole game executable links from a supplied game image;
+5. a local smoke test can start the game and exercise the launcher/network/controller paths; Windows continues to build.
 
-## Repository layout inspected
+**Important validation boundary:** CI must never include a copyrighted Tekken 6 image or generated game-specific C++. The public checkout does not contain `Default.xex` or generated game sources, by design. Therefore the full game build and actual gameplay cannot be considered validated until a maintainer runs a private/local build from their own supported copy.
 
-- `CMakeLists.txt`: game/runtime target, GGPO and `tools/xdvdfs`.
-- `generated/rexglue.cmake`: generated SDK integration and `tekken6_codegen` custom target.
-- `third_party/rexglue-sdk`: Git submodule; upstream SDK supports Linux x86-64 and Vulkan.
-- `third_party/ggpo`: project GGPO fork, containing a Windows platform implementation.
-- `launcher/CMakeLists.txt`, `launcher/src/`: Qt launcher.
-- `builder/build_native.py`, `builder/compile.json`: player's game builder and compiler/link configuration.
-- `.gitignore`: intentionally excludes `game/`, `generated/default/*` (except `.gitkeep`), `build/`, `out/` and package/runtime folders.
-- No existing `.github/workflows/` directory was found on `main`.
+## Initial audit findings
 
-## Findings and blockers
+### Engine and ReXGlue integration
 
-### P0 — game target is not yet a Linux build
+- Root `CMakeLists.txt` builds a C++23 ReXGlue host, `tools/xdvdfs`, and the local GGPO fork.
+- The ReXGlue SDK supports Linux with Vulkan; the application-level sources and current build assumptions were Windows-oriented.
+- Engine utilities directly used Win32 clocks, thread/process IDs, memory-protection/query APIs, dynamic library discovery, CPUID intrinsics and crash-reporting APIs.
+- The GGPO target unconditionally linked `ws2_32` and `winmm`, and its UDP/platform implementation used WinSock, Windows event handles and a Windows module entry point.
 
-The root CMake configuration unconditionally links GGPO with `ws2_32` and `winmm`. Those are Windows libraries. The vendored GGPO implementation includes Windows-specific networking/platform code, and no POSIX platform implementation is present in the inspected GGPO tree. A Linux job would need a supported socket/platform layer and conditional libraries before compilation/linking can succeed.
+### Player-side builder
 
-### P0 — the player-side builder emits a Windows executable
+- `builder/build_native.py` and `builder/compile.json` are specifically for the Windows/MinGW package: `clang++.exe`, `xdvdfs.exe`, Windows system libraries and a GUI executable.
+- The generated sources come from the player's own `Default.xex`; they are intentionally absent and ignored.
+- A public CI build cannot generate or publish a complete game from the public checkout alone. The correct design is a local Linux builder that receives the player's own ISO/extracted directory, verifies the supported retail image, and keeps the game copy, generated files and build cache local.
 
-`builder/compile.json` is configured for a Windows GUI executable: it includes `-municode`, `-mwindows`, `-lws2_32`, `-lkernel32`, `-luser32`, `-ldxgi`, `-lwinmm` and other Windows system libraries. `builder/build_native.py` expects `clang++.exe`, `xdvdfs.exe`, Windows paths and Windows runtime assets. This is not a Linux player build pipeline; it needs a Linux toolchain/runtime configuration and Linux-aware build logic.
+### Launcher
 
-### P0 — launcher is Windows-specific
+- Qt Widgets/Network are portable, but launcher CMake used MSVC flags and linked Windows libraries.
+- Source files directly used WinHTTP, WinMM/MCI, DXGI, Windows registry and process/job/mutex/window APIs, plus Windows-specific hidden-window and taskbar-flash behavior.
+- The official deployment configuration, certificate and art files are intentionally not published. The native Linux launcher consequently still needs a clear public/default configuration policy before any official release.
 
-`launcher/CMakeLists.txt` uses MSVC flags (`/utf-8`, `/W3`, `/Zi`, `/DEBUG`) and links Windows libraries (`dwmapi`, `winhttp`, `dxgi`, `winmm`, `dbghelp`, `ws2_32`). Launcher source files directly call Win32 APIs, including process/job APIs, DXGI GPU enumeration, MCI/PlaySound, registry-based machine identity, crash handlers and mutex APIs. Qt being cross-platform does not make these implementation files portable on its own.
+## Porting plan
 
-### P0 — the game binary cannot be produced from the public checkout alone
+### Workstream A — GGPO and POSIX base layer
 
-The generated source directory is intentionally absent and ignored by Git. The SDK codegen target consumes a game manifest that references `Default.xex`; the README documents that a supported retail copy must be supplied locally. A public Actions workflow cannot assume this input exists and should not publish game-derived code/data. The pipeline must build only distributable, non-game-specific components in CI, while the player-side Linux builder accepts their own copy locally.
+1. Add a POSIX-specific platform implementation while retaining the existing Windows implementation unchanged.
+2. Keep Windows-only compiler defines/libraries and WinSock calls behind the Windows CMake condition.
+3. Port UDP socket length/non-blocking/address handling, CRT compatibility helpers, timers, events/waits, diagnostics and process initialization.
+4. Add a small Linux-only CMake test project independent of ReXGlue code generation and the private game image.
 
-### P1 — the public launcher configuration is incomplete
+### Workstream B — engine/runtime
 
-The README documents that `launcher/official.cmake` and `launcher/official.qrc` are not published. Without them, the launcher uses placeholder server/release settings and does not include official art/certificate assets. Even after Linux compilation support is added, a release needs a deliberate policy for public configuration and server credentials/certificates.
+1. Introduce a small host platform boundary, leaving existing Windows APIs/behavior in the Windows branch.
+2. Implement Linux clocks, process/thread identifiers, dynamic symbol/library lookup, atomic file replacement, CPUID and process-memory query/protection wrappers using POSIX APIs.
+3. Add Linux crash output that preserves the operating system's core-dump behavior rather than pretending Windows stack walking exists.
+4. Port system telemetry to Linux and make the Windows-only WinMM diagnostic/profiler code explicit.
+5. Implement the game's Linux keyboard mapping through SDL, and configure ReXGlue for Vulkan.
+6. Configure/build the entire target against the pinned SDK and test it using a maintainer-supplied supported game image. Do not upload generated game output.
 
-### P1 — no packaging or CI conventions exist yet
+### Workstream C — player-side builder
 
-No existing workflows were found. There is no established Linux install tree, AppDir layout, desktop entry, AppImage icon, or stable artifact naming/version convention to reuse.
+1. Add `builder/build_native_linux.py` without changing the existing Windows builder.
+2. Accept a user's ISO or extracted folder; validate the supported USA/Europe Rev 1 `Default.xex` digest before extraction/compilation.
+3. Compile the XDVDFS helper natively instead of relying on the Windows executable.
+4. Apply project SDK patches, generate ReXGlue output, run the project's ordered netplay patch tools, reconfigure, and compile the Linux game.
+5. Keep `native/`, generated sources, CMake/Ninja objects and the local game copy ignored by Git. Preserve unchanged manifest/config timestamps and let CMake/Ninja reuse object files across builds.
+6. Add user-facing error output for missing toolchain/dependencies and unsupported images.
 
-## Recommended implementation plan
+### Workstream D — Qt launcher
 
-### Phase 1 — make a real Linux target buildable (required before release CI)
+1. Gate Windows system headers and compiler/linker flags by platform.
+2. Replace WinHTTP on Linux with Qt Network while retaining the Windows WinHTTP implementation.
+3. Port system information, CPU checks, audio notification, per-instance locking and child-process lifetime handling to POSIX/Qt.
+4. Pass Vulkan-compatible game arguments on Linux; remove D3D12/DXGI-only options from that path.
+5. Use SDL keyboard/gamepad APIs where implemented and make incomplete Windows-only window/controller diagnostics explicit. Keep existing Windows behavior and UI code behind platform guards.
+6. Compile and link the whole launcher on Ubuntu CI.
 
-1. Add platform-aware CMake setup. Keep Windows build behavior unchanged; choose POSIX libraries only on Linux.
-2. Add/enable a Linux GGPO networking/platform implementation and check the game/runtime's OS-specific code. Confirm ReXGlue target setup uses Vulkan rather than D3D12 on Linux.
-3. Create Linux build configuration for the player-side game builder, including the right compiler, XEX extraction executable, SDK/runtime outputs, shared-library staging, and incremental object/cache strategy. The builder must work on the player's machine from their own game copy.
-4. Port or isolate launcher Win32 functionality behind platform abstractions. Provide Linux equivalents for process lifetime, instance locking, audio, GPU information, machine identity, crash reporting and process launching. Replace MSVC-only CMake flags under Linux.
-5. Define whether release CI ships the launcher, builder, supporting native tools, and SDK/runtime only, with no generated Tekken 6 code or data.
-6. Validate the Linux target on a clean Ubuntu runner before enabling publication.
+### Workstream E — CI verification and hand-off
 
-### Phase 2 — build workflow (after Phase 1)
+1. Use separate Ubuntu jobs for GGPO/XDVDFS/engine platform-smoke tests and Qt launcher compilation, so failures are independently visible.
+2. Syntax-check the Linux builder in CI without trying to use a game image.
+3. Make the full private-image game build and actual gameplay a manual maintainer acceptance check.
+4. After the native build is proven, add the release/AppImage workflows as the next milestone. Do not publish a package that is only a launcher shell or that implies gameplay is validated.
 
-Create `.github/workflows/build-linux.yml` with least-privilege read permissions, Ubuntu x86-64, recursive submodule checkout, pinned build dependencies, CMake/Ninja/Clang, and a Linux/Vulkan configuration. Use `ccache` plus `actions/cache` for compiler objects and safe CMake/SDK build outputs; use dependency- and toolchain-aware cache keys with restore prefixes. Build and test the actual native targets, stage a versioned `dist/linux/` release directory, build an AppImage from the same staged application, generate SHA-256 checksums, and upload one artifact containing both the Linux release archive and AppImage. Do not package `game/`, generated game sources, user saves, or a game image.
+## Implementation progress
 
-### Phase 3 — release workflow (after Phase 2)
+### Implemented on `feature/native-linux-build`
 
-Create a separate `.github/workflows/release-linux.yml` that publishes only after a successful build artifact for a version tag (recommended `v*`) or an explicit dispatch tied to a successful run. Give this workflow `contents: write` only. Download the artifact from the relevant workflow run, verify that both expected assets and checksums exist, then create/update the GitHub Release and attach the Linux archive, AppImage and checksums. Fail closed if the artifact is missing or the build run failed. Avoid executing untrusted pull-request code with release permissions.
+- Added `third_party/ggpo/src/lib/ggpo/platform_linux.h/.cpp` with POSIX socket/event/timer/process and CRT compatibility, while selecting the Windows implementation only for Windows builds.
+- Updated root CMake to select platform-specific GGPO sources and link `ws2_32`/`winmm` only on Windows.
+- Made GGPO UDP socket/address operations conditional for POSIX and replaced the Windows-only `DllMain` startup path with a Linux static initialization path.
+- Added `src/t6_platform.h` for host clocks/thread IDs, dynamic module/symbol lookup, CPUID and Linux `VirtualQuery`/`VirtualProtect` equivalents; updated common engine helpers, crash handling, hang diagnostics and profiling guards.
+- Added an SDL-based Linux keyboard input path preserving the `T6_NET_KEYS` layouts; Linux WinMM diagnostic and suspended-thread profiler sampling are reported as unsupported instead of being compiled as if they worked.
+- Added `builder/build_native_linux.py` for an explicitly supplied local ISO/folder, checksum validation, native XDVDFS extraction, ReXGlue codegen/patch steps and cached CMake/Ninja compilation. Added ignored paths for local generated/game output.
+- Added Linux conditionals to the Qt launcher: platform-specific CMake flags/libraries, Qt Network HTTP, POSIX audio fallback and system IDs, a lock-file single-instance mechanism, child process lifetime, Vulkan launch arguments and a Linux executable/build-state path.
+- Added README build instructions and a two-job Ubuntu smoke workflow.
+- Added the isolated platform smoke test for memory mapping APIs.
 
-### Phase 4 — acceptance criteria
+### CI observations so far
 
-- Clean Ubuntu runner compiles the supported native Linux targets; no Win32 linker flags or DLL-only dependencies remain in Linux targets.
-- CI artifact contains both the Linux release archive and executable `.AppImage`.
-- The AppImage launches on a clean supported Ubuntu environment and reports any missing runtime prerequisites clearly.
-- The packaged player-side builder accepts a user-supplied supported game copy; CI artifacts contain no game image, extracted game data, generated game-specific source or saves.
-- Cache restore is visible in logs and does not reuse incompatible outputs across different toolchains/platforms.
-- A version tag publishes only the successful artifact, with checksums and reproducible asset names.
-- Windows builds continue to work unchanged.
+GitHub Actions is being used iteratively, and earlier runs are expected to be red because each exposed a missing platform detail. The log from run [39555772037](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39555772037) showed that several GGPO Linux sources (including UDP, UDP protocol and the POSIX platform implementation) compiled. That run then found an extra preprocessor terminator in the engine test header and a missing Linux guard around `OutputDebugStringW`; both were corrected on the branch. The current replacement run must finish before this audit can claim the smoke checks are green.
 
-## Decision
+CI has not been supplied with a retail game image; it intentionally cannot establish that the complete engine compiles or that the game can be played.
 
-Do not pretend that workflow YAML alone can make the existing Windows-oriented application native on Linux. The release/build workflows should be added as production workflows only after Phase 1 makes the Linux targets real and CI can demonstrate a successful build. Until then, an AppImage or Linux release asset would be misleading.
+## Explicit remaining risks / known limitations
+
+- **Full engine/game build is unverified.** The public CI smoke target checks GGPO, XDVDFS and isolated POSIX memory wrappers, not every SDK-generated engine source. A private, player-supplied image is needed for codegen and full linkage.
+- **End-to-end gameplay is unverified.** No native Linux session/match has been tested.
+- **Launcher controller tools are incomplete on Linux.** The game's SDL keyboard path exists, but the launcher's controller capture/test UI currently cannot enumerate/confirm Linux gamepads. It needs SDL controller integration and runtime tests.
+- **Window management behavior differs.** Linux window hide/restore helpers are no-ops while the Vulkan window manages its own presentation; multi-window practice/parked behavior requires a real desktop test.
+- **Windows-only profiling/diagnostics are not ported.** WinMM polling and suspended-thread profiling stay Windows-only and should remain labelled that way.
+- **Official deployment settings/assets are absent.** The public launcher still has placeholder endpoint/configuration unless maintainers supply a supported public configuration. Do not leak private server credentials, TLS keys/certificates or non-public assets into CI artifacts.
+- **Dependency/version floor needs a local run.** ReXGlue requests Clang 18+, CMake 3.25+ and Vulkan development dependencies. The player builder and deployment instructions must be verified against the actual pinned SDK revision.
+
+## Current milestone status
+
+**In progress — not release-ready.** The structural POSIX paths and isolated CI checks are implemented, but milestone acceptance still depends on clean CI results for the GGPO/platform and Qt launcher jobs, followed by a maintainer's full local build and gameplay test from their own supported game copy.
+
+The next milestone after this one is the requested cached Linux release workflow and the separate GitHub Release/AppImage deployment workflow.
