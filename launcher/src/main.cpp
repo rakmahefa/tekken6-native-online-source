@@ -73,11 +73,19 @@ int main(int argc, char** argv)
 	}
 	catch (const std::exception& e)
 	{
+#if defined(_WIN32)
+		MessageBoxA(nullptr, e.what(), "Tekken 6 Online - unexpected error", MB_ICONERROR);
+#else
 		qCritical() << "Tekken 6 Online - unexpected error:" << e.what();
+#endif
 	}
 	catch (...)
 	{
+#if defined(_WIN32)
+		MessageBoxA(nullptr, "unknown exception", "Tekken 6 Online - unexpected error", MB_ICONERROR);
+#else
 		qCritical() << "Tekken 6 Online - unknown exception";
+#endif
 	}
 	return 1;
 }
