@@ -304,4 +304,3 @@ inline BOOL MoveFileExA(const char* from, const char* to, DWORD)
    (info)[2] = static_cast<int>(__c); (info)[3] = static_cast<int>(__d); \
 } while (0)
 #endif
-#endif // !_WIN32
