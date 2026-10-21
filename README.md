@@ -73,7 +73,7 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 ## Linux AppImage test prerelease (experimental)
 
-**Latest published build:** [`v2.1.6-test.3`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.3). This version follows the manual test of `v2.1.6-test.1` and fixes Qt Wayland/SVG plugin packaging and the OpenSSL runtime libraries needed by Qt TLS. The AppImage was built, checksum-verified, and startup-smoke-tested in [GitHub Actions run 39568524990](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39568524990).
+**Latest published build before the current fixes:** [`v2.1.6-test.4`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.4). The next test build configures the public GitHub releases feed for patch notes, embeds its actual prerelease version in the launcher, and keeps Settings/local profile reachable when the lobby configuration is missing. Follow the [GitHub Actions runs](https://github.com/rakmahefa/tekken6-native-online-source/actions) for build and release status.
 
 Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/Tekken6NativeOnline-x86_64.AppImage)  
 Checksum manifest: [`SHA256SUMS`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/SHA256SUMS)  
@@ -87,7 +87,7 @@ chmod +x Tekken6NativeOnline-x86_64.AppImage
 ./Tekken6NativeOnline-x86_64.AppImage
 ```
 
-The package explicitly includes Qt's xcb, Wayland and offscreen platform plugins, SVG image/icon plugins, and the OpenSSL runtime libraries used by Qt's TLS backend. CI validates those payload files and starts the AppImage in offscreen mode to catch missing-plugin, SVG-painting and TLS-runtime failures.
+The package explicitly includes Qt's xcb, Wayland and offscreen platform plugins, Wayland shell/EGL integrations, SVG image/icon plugins, and the OpenSSL runtime libraries used by Qt's TLS backend. The public Linux build uses this repository's GitHub releases feed for Patch notes; the current CI iteration verifies that the configured Qt Network/TLS request succeeds.
 
 ### Online profile vs. local game building
 
