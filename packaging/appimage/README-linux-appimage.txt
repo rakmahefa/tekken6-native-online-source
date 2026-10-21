@@ -30,9 +30,9 @@ not verified by CI. Linux controller binding UI, some window hide/restore
 behavior, and Windows-only profiler/diagnostic paths remain incomplete.
 
 
-The AppImage bundles Qt's platform plugins plus the separate Wayland shell-integration plugins (xdg-shell, wl-shell, ivi-shell and qt-shell) and the wayland-egl client-buffer plugin. These are separate Qt plugin categories and are required when launching under a Wayland desktop. The packaging script and CI verify that the required plugins are present. The package also includes Qt SVG image/icon plugins and the OpenSSL shared libraries loaded dynamically by Qt.
+The Linux AppImage bundles Qt's xcb, offscreen and Wayland platform plugins, the separate Wayland shell integrations (including xdg-shell) and wayland-egl client integration, Qt SVG image/icon plugins, and the OpenSSL shared libraries used by Qt TLS. The launcher is compiled with the published AppImage test version and uses this repository's public GitHub releases feed for Patch notes. The Linux test prereleases publish an AppImage rather than the Windows `tekken6_native_online_patch.zip`; download a newer AppImage release manually instead of expecting the Windows self-updater to replace it. CI verifies the plugin payload and checks the bundled Qt network/TLS runtime against the release feed.
 
-Network configuration: this public source intentionally does not include the official lobby endpoint or its pinned certificate. The placeholder endpoint cannot connect to the real profile/matchmaking service. Supply the actual endpoint and pinned PEM leaf certificate from the service maintainer when launching a private/test build:
+Offline behavior: the public Linux build intentionally does not include the official lobby endpoint or its pinned certificate, so account login and online matchmaking are unavailable unless the service maintainer provides a valid endpoint and the exact pinned leaf certificate. Settings and local profile preferences remain available offline, and the game builder itself works locally. For a private/test service, pass the actual endpoint and pinned PEM leaf certificate from the service maintainer:
 
     T6_LOBBY_SERVER='tls://your-lobby-host:7700' T6_LOBBY_CERT='/path/to/pinned-lobby-cert.pem' ./Tekken6NativeOnline-x86_64.AppImage
 
