@@ -22,6 +22,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <signal.h>
 #include <unistd.h>
 #include <thread>
 #include <netinet/in.h>
@@ -80,6 +82,27 @@ inline int strcpy_s(char* destination, size_t destination_size, const char* sour
    }
    std::memcpy(destination, source, length + 1);
    return 0;
+}
+
+template <size_t N>
+inline int strcpy_s(char (&destination)[N], const char* source)
+{
+   return strcpy_s(destination, N, source);
+}
+
+inline void OutputDebugStringA(const char* message)
+{
+   if (message) std::fputs(message, stderr);
+}
+
+inline void DebugBreak()
+{
+   std::raise(SIGTRAP);
+}
+
+inline BOOL CreateDirectoryA(const char* path, void*)
+{
+   return path && ::mkdir(path, 0755) == 0 ? 1 : 0;
 }
 
 inline int sprintf_s(char* destination, size_t destination_size, const char* format, ...)
