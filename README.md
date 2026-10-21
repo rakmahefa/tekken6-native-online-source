@@ -47,7 +47,7 @@ cmake --build build/launcher-linux --parallel
 
 ### Build the game from your own copy
 
-The SDK needs Clang 18 or newer, CMake 3.25 or newer, Ninja, Python 3, Git, Vulkan development headers and Linux audio/window-system dependencies. On Ubuntu 24.04 these can be installed with:
+The SDK needs Clang 18 or newer, CMake 3.25 or newer, Ninja, Python 3, Git, libstdc++ development headers, Vulkan development headers and Linux audio/window-system dependencies. Clang 18 can report a `__cpp_concepts` feature-test value that causes libstdc++ to hide C++23 `std::expected`; the builder passes `-D__cpp_concepts=202002L` for this SDK build and keeps libstdc++ for floating-point `std::from_chars`. On Ubuntu 24.04 these dependencies can be installed with:
 
 ```sh
 sudo apt update

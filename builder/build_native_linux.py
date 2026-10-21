@@ -258,6 +258,11 @@ def configure() -> None:
          "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_C_COMPILER=clang",
          "-DCMAKE_CXX_COMPILER=clang++",
+         # Clang 18 reports an older __cpp_concepts feature-test value than
+         # libstdc++ requires to expose C++23 std::expected. Clang supports
+         # the concepts syntax used here, so lift only that library gate;
+         # keep libstdc++ for floating-point std::from_chars support.
+         "-DCMAKE_CXX_FLAGS=-D__cpp_concepts=202002L",
          f"-DREXSDK_DIR={SDK}",
          "-DREXGLUE_USE_VULKAN=ON",
          "-DREXGLUE_ENABLE_TRACY=OFF"], "configure native Linux game build")
@@ -307,8 +312,19 @@ def build_game() -> None:
     say(f"DONE {target_exe}")
 
 
+def print_usage() -> None:
+    print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
+    print("       python3 builder/build_native_linux.py --check <ISO or folder>")
+    print("       python3 builder/build_native_linux.py --update | --relink")
+    print("       python3 builder/build_native_linux.py --force-extract <Tekken 6 ISO>")
+    print("       python3 builder/build_native_linux.py --help")
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
+    if args in (["--help"], ["-h"]):
+        print_usage()
+        return 0
     if len(args) == 2 and args[0] == "--check":
         source = Path(args[1]).expanduser().resolve()
         if source.is_dir():
@@ -330,10 +346,7 @@ def main(argv: list[str]) -> int:
     elif len(args) == 1 and not args[0].startswith("--"):
         source = Path(args[0]).expanduser().resolve()
     elif not args:
-        print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
-        print("       python3 builder/build_native_linux.py --check <ISO or folder>")
-        print("       python3 builder/build_native_linux.py --update | --relink")
-        print("       python3 builder/build_native_linux.py --force-extract <Tekken 6 ISO>")
+        print_usage()
         return 1
     else:
         print("ERROR invalid arguments; run without arguments for usage", flush=True)

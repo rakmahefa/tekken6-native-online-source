@@ -12,9 +12,21 @@ save data, or prebuilt game executable.
    supported USA/Europe Rev 1 Tekken 6 ISO or extracted disc directory.
 4. Let the builder validate the copy, extract/codegen, and compile the game.
 
-The AppImage stages its source workspace in:
+By default, the AppImage stages its source workspace in:
   ~/.local/share/tekken6-native-online/workspace
-(or $XDG_DATA_HOME/tekken6-native-online/workspace)
+(or $XDG_DATA_HOME/tekken6-native-online/workspace).
+
+To reuse a different workspace root (for example, one that already contains a
+native/ game build), set T6_WORKSPACE_DIR before launching the AppImage. Use an
+absolute path to the directory that contains builder/:
+
+  T6_WORKSPACE_DIR="$HOME/src/tekken6-native-online-source" ./Tekken6NativeOnline-x86_64.AppImage
+
+When the bundled source version changes, the AppImage refreshes bundled source
+files in that directory. Mutable game/build state such as native/, generated
+sources and CMake/Ninja outputs is deliberately omitted from the update payload,
+so your local game and incremental cache are preserved. Keep uncommitted source
+edits backed up before selecting a workspace that the AppImage will update.
 
 The writable workspace is necessary because code generation and CMake/Ninja
 must create local build output. The game image and generated files stay on your

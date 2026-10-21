@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - feature/native-linux-build
+      - feature/appimage-workspace-override
     tags:
       - 'v*-test.*'
   pull_request:
     branches:
       - main
+      - feature/native-linux-build
   workflow_dispatch:
     inputs:
       version:
@@ -162,9 +164,12 @@ jobs:
             echo "AppImage is missing a required Qt image/platform/TLS component." >&2
             exit 1
           fi
-          if ! grep -q 'GitHub release feed reachable (HTTP 200)' "$log"; then
+          # GitHub may return 403/429 for shared hosted-runner IPs. Any HTTP
+          # status means HTTPS/TLS negotiation and certificate verification
+          # completed; explicit Qt/OpenSSL transport errors are rejected above.
+          if ! grep -Eq 'GitHub release feed reachable \(HTTP 200\)|GitHub release check failed \(HTTP status [0-9]{3}' "$log"; then
             cat "$log"
-            echo "The bundled Qt networking/TLS runtime could not reach the configured GitHub release feed." >&2
+            echo "The bundled Qt networking/TLS runtime did not receive an HTTP response from the configured GitHub release feed." >&2
             exit 1
           fi
           cat "$log"
@@ -180,9 +185,198 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  smoke-test-builder-workspace:
+    name: Extract workspace, patch SDK, and configure/build with CMake
+    needs: build-appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source-side regression tests
+        uses: actions/checkout@v4
+
+      - name: Download the exact AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Tekken6NativeOnline-linux-${{ needs.build-appimage.outputs.version }}
+          path: dist
+
+      - name: Install native builder and CMake dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang cmake ninja-build python3 git build-essential \
+            libvulkan-dev libgtk-3-dev libx11-xcb-dev libxss-dev \
+            libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
+            libdecor-0-dev libasound2-dev libpulse-dev libpipewire-0.3-dev
+
+      - name: Extract AppImage and stage a custom writable workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$GITHUB_WORKSPACE/dist/Tekken6NativeOnline-x86_64.AppImage"
+          (cd dist && sha256sum --check SHA256SUMS)
+          chmod +x "$APPIMAGE"
+
+          EXTRACT_ROOT="$RUNNER_TEMP/t6-appimage-extracted"
+          mkdir -p "$EXTRACT_ROOT"
+          (cd "$EXTRACT_ROOT" && "$APPIMAGE" --appimage-extract)
+          APPDIR="$EXTRACT_ROOT/squashfs-root"
+          BUNDLE="$APPDIR/usr/share/tekken6-native-online/workspace.tar.gz"
+          test -s "$BUNDLE"
+          test -s "$APPDIR/usr/share/tekken6-native-online/source-version"
+
+          # Use a pre-existing workspace with sentinel state to verify that
+          # AppRun chooses the requested root without deleting native/ data.
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          mkdir -p "$CUSTOM_WORKSPACE/native"
+          printf 'keep-local-native-data\n' > "$CUSTOM_WORKSPACE/native/.ci-preserve-me"
+          cat > "$APPDIR/usr/bin/tekken6-native-online" <<'STUB'
+          #!/bin/sh
+          set -eu
+          printf '%s\n' "${T6_PORT_ROOT:?AppRun did not export T6_PORT_ROOT}" > "${RUNNER_TEMP:?}/selected-workspace.txt"
+          STUB
+          chmod +x "$APPDIR/usr/bin/tekken6-native-online"
+
+          T6_WORKSPACE_DIR="$CUSTOM_WORKSPACE" "$APPDIR/AppRun"
+          test "$(cat "$RUNNER_TEMP/selected-workspace.txt")" = "$CUSTOM_WORKSPACE"
+          test -s "$CUSTOM_WORKSPACE/builder/build_native_linux.py"
+          test -f "$CUSTOM_WORKSPACE/native/.ci-preserve-me"
+          test "$(cat "$CUSTOM_WORKSPACE/native/.ci-preserve-me")" = "keep-local-native-data"
+
+          # AppImage source archives must not depend on Git worktree metadata.
+          if find "$CUSTOM_WORKSPACE" -name .git -print -quit | grep -q .; then
+            echo "Unexpected .git metadata in the AppImage workspace." >&2
+            exit 1
+          fi
+
+      - name: Syntax-check packaged Python and shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          export PYTHONPYCACHEPREFIX="$RUNNER_TEMP/t6-pycache"
+          python3 -m compileall -q "$CUSTOM_WORKSPACE/builder" "$CUSTOM_WORKSPACE/tools"
+          sh -n "$CUSTOM_WORKSPACE/packaging/appimage/AppRun"
+          bash -n "$CUSTOM_WORKSPACE/tools/build_appimage.sh"
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find "$CUSTOM_WORKSPACE/builder" "$CUSTOM_WORKSPACE/tools" -type f -name '*.sh' -print0)
+
+      - name: Apply SDK patches in source-archive mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          SDK="$CUSTOM_WORKSPACE/third_party/rexglue-sdk"
+          test -s "$SDK/CMakeLists.txt"
+          test -s "$SDK/thirdparty/CMakeLists.txt"
+          python3 "$CUSTOM_WORKSPACE/tools/apply_rexglue_patches.py" --sdk "$SDK"
+          grep -Fq 'if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git" AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/.git")' "$SDK/thirdparty/CMakeLists.txt"
+          MEMORY_SOURCE="$SDK/src/kernel/xboxkrnl/xboxkrnl_memory.cpp"
+          grep -Fq '#if defined(_WIN32)' "$MEMORY_SOURCE"
+          grep -Fq 'return VirtualQuery(p, &mbi, sizeof(mbi))' "$MEMORY_SOURCE"
+          grep -Fq '// VirtualQuery-based guest stack probing is Windows-only.' "$MEMORY_SOURCE"
+          # Running the patcher twice must remain safe and deterministic.
+          python3 "$CUSTOM_WORKSPACE/tools/apply_rexglue_patches.py" --sdk "$SDK"
+
+      - name: Run packaged builder regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          mkdir -p "$CUSTOM_WORKSPACE/tests"
+          install -m 0644 tests/test_linux_builder_incremental.py "$CUSTOM_WORKSPACE/tests/"
+          cd "$CUSTOM_WORKSPACE"
+          python3 tests/test_linux_builder_incremental.py
+          python3 builder/build_native_linux.py --help | tee "$RUNNER_TEMP/builder-help.txt"
+          grep -Fq 'builder/build_native_linux.py --update' "$RUNNER_TEMP/builder-help.txt"
+
+          # With no private game image in CI, --update must stop at validation
+          # and must not start CMake or delete pre-existing native/ data.
+          set +e
+          python3 builder/build_native_linux.py --update > "$RUNNER_TEMP/builder-update.txt" 2>&1
+          update_status=$?
+          set -e
+          cat "$RUNNER_TEMP/builder-update.txt"
+          test "$update_status" -eq 1
+          grep -Fq 'ERROR no validated game copy is staged in native/game' "$RUNNER_TEMP/builder-update.txt"
+          test "$(cat native/.ci-preserve-me)" = "keep-local-native-data"
+
+      - name: Verify C++23 standard-library features used by ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/cxx23-library-smoke.cpp" <<'CPP'
+          #include <charconv>
+          #include <expected>
+          #include <string_view>
+
+          int main() {
+            std::expected<int, int> value = 1;
+            constexpr std::string_view input{"1.5"};
+            float parsed = 0.0F;
+            const auto result = std::from_chars(
+                input.data(), input.data() + input.size(), parsed,
+                std::chars_format::general);
+            return value && value.value() == 1 &&
+                           result.ec == std::errc{} && parsed == 1.5F
+                       ? 0
+                       : 1;
+          }
+          CPP
+          clang++ --version
+          clang++ -std=c++23 -D__cpp_concepts=202002L \
+            "$RUNNER_TEMP/cxx23-library-smoke.cpp" \
+            -o "$RUNNER_TEMP/cxx23-library-smoke"
+          "$RUNNER_TEMP/cxx23-library-smoke"
+
+      - name: Configure the full native game CMake project without Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          SDK="$CUSTOM_WORKSPACE/third_party/rexglue-sdk"
+          CMAKE_BUILD_DIR="$RUNNER_TEMP/t6-native-cmake-build"
+          cmake -S "$CUSTOM_WORKSPACE" -B "$CMAKE_BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS=-D__cpp_concepts=202002L \
+            "-DREXSDK_DIR=$SDK" \
+            -DREXGLUE_USE_VULKAN=ON \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            2>&1 | tee "$RUNNER_TEMP/native-cmake-configure.log"
+          if grep -E "Git submodule .* is not initialized|Please run: git submodule update --init --recursive" "$RUNNER_TEMP/native-cmake-configure.log"; then
+            echo "CMake still requires Git submodule metadata in the packaged source archive." >&2
+            exit 1
+          fi
+
+      - name: Build CMake targets that do not require a game image
+        shell: bash
+        run: |
+          set -euo pipefail
+          CMAKE_BUILD_DIR="$RUNNER_TEMP/t6-native-cmake-build"
+          CUSTOM_WORKSPACE="$RUNNER_TEMP/t6-custom-workspace"
+          SDK_OUT="$CUSTOM_WORKSPACE/third_party/rexglue-sdk/out"
+          cmake --build "$CMAKE_BUILD_DIR" --target rexglue xdvdfs_tool ggpo --parallel 2
+          # ReXGlue's generated CMake config writes the executable into the SDK
+          # source tree's out/<platform> directory, not the top-level build tree.
+          REXGLUE_BIN="$(find "$SDK_OUT" -type f -executable -name rexglue -print -quit)"
+          if [[ -z "$REXGLUE_BIN" ]]; then
+            echo "Unable to find the built rexglue executable under $SDK_OUT" >&2
+            find "$CUSTOM_WORKSPACE/third_party/rexglue-sdk" -maxdepth 5 -type f -name rexglue -print >&2 || true
+            exit 1
+          fi
+          "$REXGLUE_BIN" --help | tee "$RUNNER_TEMP/rexglue-help.txt"
+          grep -Fq 'codegen' "$RUNNER_TEMP/rexglue-help.txt"
+
+          # The packaged workspace intentionally omits the retail Default.xex.
+          # So CI builds the code generator and host-independent targets, but
+          # does not invoke tekken6_codegen or compile the game-specific C++.
   publish-prerelease:
     name: Publish GitHub test prerelease
-    needs: build-appimage
+    needs: [build-appimage, smoke-test-builder-workspace]
     if: ${{ needs.build-appimage.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -212,7 +406,7 @@ jobs:
 
             This prerelease contains the native Qt launcher as an AppImage plus the source/SDK workspace needed by its local builder.
 
-            No game executable or copyrighted game data is included. On first launch, the AppImage stages its source workspace into ~/.local/share/tekken6-native-online/workspace. Choose your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 ISO or extracted disc folder in the launcher; code generation and compilation happen locally.
+            No game executable or copyrighted game data is included. By default the AppImage stages its source workspace into ~/.local/share/tekken6-native-online/workspace; set T6_WORKSPACE_DIR to an absolute workspace path to reuse an existing directory. Mutable native/ game and build state is preserved when source files are refreshed. Choose your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 ISO or extracted disc folder in the launcher; code generation and compilation happen locally.
 
             The local game build requires Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan development headers and the Linux audio/window-system development packages listed in README.md.
 

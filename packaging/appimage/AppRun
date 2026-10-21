@@ -8,7 +8,14 @@ VERSION_FILE="$PAYLOAD/source-version"
 
 DATA_HOME="${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}"
 WORKSPACE_BASE="$DATA_HOME/tekken6-native-online"
-WORKSPACE="$WORKSPACE_BASE/workspace"
+WORKSPACE="${T6_WORKSPACE_DIR:-$WORKSPACE_BASE/workspace}"
+case "$WORKSPACE" in
+    /*) ;;
+    *)
+        echo "T6_WORKSPACE_DIR must be an absolute path (got: $WORKSPACE)." >&2
+        exit 2
+        ;;
+esac
 STAMP="$WORKSPACE/.t6-appimage-source-version"
 
 if [ ! -f "$BUNDLE" ] || [ ! -f "$VERSION_FILE" ]; then

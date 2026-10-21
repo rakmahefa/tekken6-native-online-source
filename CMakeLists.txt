@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# ReXGlue's AMD64 memory routines use SSSE3 intrinsics. The project already
+# requires SSSE3 at runtime (launcher CPU check), so apply the matching target
+# flag before adding the SDK directory; this propagates to SDK and game targets.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    add_compile_options(-mssse3)
+endif()
+
 set(REXSDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rexglue-sdk"
     CACHE PATH "Pinned RexGlue SDK source tree")
 
@@ -90,7 +97,6 @@ add_executable(tekken6 src/main.cpp src/tekken6_app.cpp
     src/t6_watch.cpp src/t6_match_setup.cpp src/t6_research.cpp src/t6_customize.cpp src/t6_name_plates.cpp
     src/t6_status.cpp src/t6_resolution.cpp)
 target_link_libraries(tekken6 PRIVATE ggpo)
-target_compile_options(tekken6 PRIVATE -mssse3)
 if(MINGW)
     # The SDK's SDL entry point is wWinMain; select the Unicode MinGW CRT
     # startup rather than expecting the ANSI WinMain symbol.
