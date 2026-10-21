@@ -47,12 +47,11 @@ cmake --build build/launcher-linux --parallel
 
 ### Build the game from your own copy
 
-The SDK needs Clang 18 or newer, CMake 3.25 or newer, Ninja, Python 3, Git, libc++ development headers/runtime, Vulkan development headers and Linux audio/window-system dependencies. The builder selects libc++ explicitly for C++23 because Clang 18's default libstdc++ combination does not expose `std::expected` consistently. On Ubuntu 24.04 these can be installed with:
+The SDK needs Clang 18 or newer, CMake 3.25 or newer, Ninja, Python 3, Git, libstdc++ development headers, Vulkan development headers and Linux audio/window-system dependencies. Clang 18 can report a `__cpp_concepts` feature-test value that causes libstdc++ to hide C++23 `std::expected`; the builder passes `-D__cpp_concepts=202002L` for this SDK build and keeps libstdc++ for floating-point `std::from_chars`. On Ubuntu 24.04 these dependencies can be installed with:
 
 ```sh
 sudo apt update
 sudo apt install --yes clang cmake ninja-build python3 git build-essential \
-  libc++-18-dev libc++abi-18-dev \
   libvulkan-dev libgtk-3-dev libx11-xcb-dev libxss-dev \
   libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
   libdecor-0-dev libasound2-dev libpulse-dev libpipewire-0.3-dev
