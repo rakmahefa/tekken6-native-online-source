@@ -73,33 +73,39 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 ## Linux AppImage test prerelease (experimental)
 
-**First prerelease built and published:** [`v2.1.6-test.1`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1). The [Ubuntu AppImage workflow passed](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563204068) and uploaded the AppImage, checksum and usage note.
+**Latest published build:** [`v2.1.6-test.3`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.3). This version follows the manual test of `v2.1.6-test.1` and fixes Qt Wayland/SVG plugin packaging and the OpenSSL runtime libraries needed by Qt TLS. The AppImage was built, checksum-verified, and startup-smoke-tested in [GitHub Actions run 39568524990](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39568524990).
 
-Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.1/Tekken6NativeOnline-x86_64.AppImage)  
-SHA-256: `52c56c8887dedafe3f7d0b0b6a16354185452b98585f77c7748caed652f15c16`
+Direct download: [Tekken6NativeOnline-x86_64.AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/Tekken6NativeOnline-x86_64.AppImage)  
+Checksum manifest: [`SHA256SUMS`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/SHA256SUMS)  
+Testing notes: [`README-linux-appimage.txt`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/README-linux-appimage.txt)
 
-The first test build exposed three runtime packaging gaps: a missing Qt Wayland platform plugin, missing Qt SVG image/icon plugins, and OpenSSL libraries loaded dynamically by Qt. The next prerelease adds explicit packages, AppDir validations, and an offscreen startup smoke test for these components.
-
-The public repository intentionally omits the private official launcher configuration and pinned lobby certificate. Consequently, the published package uses a placeholder lobby endpoint, and fixing OpenSSL alone cannot make the remote account/profile service connect. A maintainer-provided endpoint and pinned leaf certificate are required; certificate validation remains mandatory. A private/test server can be configured at launch using the existing T6_LOBBY_SERVER override and the T6_LOBBY_CERT PEM-file override:
-
-    T6_LOBBY_SERVER='tls://your-lobby-host:7700' T6_LOBBY_CERT='/path/to/pinned-lobby-cert.pem' ./Tekken6NativeOnline-x86_64.AppImage
-
-Use the actual server and certificate supplied by its maintainer; the example host is a placeholder. The game builder itself runs locally against your supported game copy and installed toolchain, so it does not need matchmaking connectivity.
-
-The GitHub Actions workflow at .github/workflows/linux-appimage-prerelease.yml builds a native Qt launcher AppImage, uploads it as a CI artifact, and publishes the same verified files as a GitHub prerelease when a test release is explicitly requested. Normal pull requests and branch pushes produce artifacts only; changing `packaging/appimage/PRERELEASE_VERSION` is the explicit branch-side publish request, and tagged/manual publishing is also supported.
-
-For a future prerelease, update `packaging/appimage/PRERELEASE_VERSION` to the next `X.Y.Z-test.N` version, or open **Actions → Linux AppImage prerelease → Run workflow**, select the Linux development branch, enter that version, and enable **Publish the successfully built AppImage as a GitHub prerelease**. A tag such as `v0.1.0-test.1` can also request publication. The tag format is compatible with the launcher's existing test-channel version handling.
-
-Download `Tekken6NativeOnline-x86_64.AppImage`, make it executable, and launch it:
+Keep the AppImage and `SHA256SUMS` in the same folder and run:
 
 ```sh
+sha256sum --check SHA256SUMS
 chmod +x Tekken6NativeOnline-x86_64.AppImage
 ./Tekken6NativeOnline-x86_64.AppImage
 ```
 
-The AppImage includes the Qt launcher runtime plus a clean copy of the project source and pinned ReXGlue SDK required by the player-side builder. On first launch it stages that source tree into `~/.local/share/tekken6-native-online/workspace`; the game image, generated code, save data and compiled game stay outside the AppImage and are never uploaded by the workflow.
+The package explicitly includes Qt's xcb, Wayland and offscreen platform plugins, SVG image/icon plugins, and the OpenSSL runtime libraries used by Qt's TLS backend. CI validates those payload files and starts the AppImage in offscreen mode to catch missing-plugin, SVG-painting and TLS-runtime failures.
 
-**The compiler/toolchain is not bundled.** Building the game from your own ISO/folder still requires Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan development headers and the Linux audio/window-system development packages listed above. This AppImage milestone verifies packaging and launcher build only; a successful local game build and gameplay test are still needed before a stable release.
+### Online profile vs. local game building
+
+The public repository intentionally omits the official server configuration and pinned lobby certificate. The published package therefore has a placeholder lobby address and **cannot log into the real Profile/matchmaking service by default**. An internet connection alone is not enough; the launcher needs the correct server endpoint and the exact pinned certificate supplied by the service maintainer. Certificate validation remains enabled.
+
+For a private/test service, the launcher accepts these environment overrides when a maintainer has given you the actual host and leaf-certificate PEM file:
+
+```sh
+T6_LOBBY_SERVER='tls://your-lobby-host:7700' \
+T6_LOBBY_CERT='/path/to/pinned-lobby-cert.pem' \
+./Tekken6NativeOnline-x86_64.AppImage
+```
+
+The hostname above is only a placeholder; do not use it as an actual service address. Never disable TLS validation or substitute an untrusted certificate.
+
+**Building the game is a separate local operation and does not require matchmaking to be online.** The AppImage doesn't contain your ISO or a compiled game: select your own supported Tekken 6 Xbox 360 USA/Europe Rev 1 copy in the launcher. The game builder needs the host development dependencies listed above (Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan headers and Linux audio/window-system development packages).
+
+This is still an experimental prerelease, not a verified gameplay release. CI passes the launcher package/startup checks but cannot build from a retail game image or verify gameplay. Test from your own copy and report whether validation, code generation, compilation, game startup, audio and controller input work. Never upload the ISO, extracted game content, saves or generated game-specific C++.
 
 ## Credits
 
