@@ -75,14 +75,8 @@ cp "$ROOT/packaging/appimage/tekken6-native-online.svg" \
    "$APPDIR/usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg"
 ln -sfn usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg "$APPDIR/.DirIcon"
 
-# Put AppRun in place before linuxdeploy reads the desktop entry (Exec=AppRun).
-# Reinstall it after deployment as linuxdeploy may create/adjust entry-point links.
-install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
-
-# Install AppRun before linuxdeploy. The desktop entry uses Exec=AppRun,
-# and linuxdeploy validates that executable while deploying desktop files.
-# Keeping our launcher in place also ensures the writable workspace staging
-# logic survives Qt deployment instead of being replaced by a generated stub.
+# Install AppRun before linuxdeploy reads the desktop entry (Exec=AppRun).
+# Keep our writable-workspace staging launcher as the final AppDir entry point.
 install -m 0755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 
 # linuxdeploy bundles shared libraries and Qt plugins; appimagetool is invoked
@@ -95,6 +89,29 @@ PATH="$TOOL_DIR:$PATH" APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" \
     --desktop-file "$APPDIR/usr/share/applications/tekken6-native-online.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg" \
     --plugin qt
+
+# Qt loads its OpenSSL backend and OpenSSL runtime libraries dynamically,
+# so linuxdeploy cannot always infer the libssl/libcrypto dependencies.
+# Bundle both SONAMEs explicitly rather than falling back to cert-only TLS.
+mkdir -p "$APPDIR/usr/lib"
+for SONAME in libssl.so.3 libcrypto.so.3; do
+    RESOLVED="$(ldconfig -p | awk -v name="$SONAME" '$1 == name { print $NF; exit }')"
+    if [[ -z "$RESOLVED" || ! -e "$RESOLVED" ]]; then
+        echo "Required OpenSSL runtime library not found: $SONAME" >&2
+        exit 4
+    fi
+    install -m 0755 "$(readlink -f "$RESOLVED")" "$APPDIR/usr/lib/$SONAME"
+done
+
+# Fail the package build if any plugin that the current launcher uses did not
+# make it into the AppDir. These checks also protect future packaging changes.
+test -s "$APPDIR/usr/plugins/platforms/libqxcb.so"
+find "$APPDIR/usr/plugins/platforms" -maxdepth 1 -type f -name 'libqwayland*.so' -print -quit | grep -q .
+test -s "$APPDIR/usr/plugins/imageformats/libqsvg.so"
+test -s "$APPDIR/usr/plugins/iconengines/libqsvgicon.so"
+test -s "$APPDIR/usr/plugins/tls/libqopensslbackend.so"
+test -s "$APPDIR/usr/lib/libssl.so.3"
+test -s "$APPDIR/usr/lib/libcrypto.so.3"
 
 cp "$ROOT/packaging/appimage/tekken6-native-online.desktop" "$APPDIR/tekken6-native-online.desktop"
 chmod 0755 "$APPDIR/usr/bin/tekken6-native-online"
