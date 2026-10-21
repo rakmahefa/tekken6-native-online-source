@@ -258,6 +258,10 @@ def configure() -> None:
          "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_C_COMPILER=clang",
          "-DCMAKE_CXX_COMPILER=clang++",
+         # Clang 18 with libstdc++ may hide std::expected because its
+         # __cpp_concepts feature-test macro lags the library gate. Use
+         # libc++ explicitly for the SDK's C++23 API surface.
+         "-DCMAKE_CXX_FLAGS=-stdlib=libc++",
          f"-DREXSDK_DIR={SDK}",
          "-DREXGLUE_USE_VULKAN=ON",
          "-DREXGLUE_ENABLE_TRACY=OFF"], "configure native Linux game build")
