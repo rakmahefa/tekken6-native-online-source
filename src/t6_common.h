@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <climits>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -16,11 +17,7 @@
 #include <utility>
 #include <vector>
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>  // (before windows.h: t6_netplay.cpp uses Winsock)
-#include <windows.h>
+#include "t6_platform.h"
 
 extern uint8_t* g_t6_membase;  // t6_netplay.cpp: guest memory base
 extern bool (*g_t6_gpu_idle)();  // t6_netplay.cpp, set by Tekken6App: the GPU executed all submitted commands
@@ -132,14 +129,8 @@ inline uint32_t T6EnvU32(const char* name, uint32_t fallback, int base = 0) {
 
 // milliseconds of the performance counter (the frequency read once)
 inline double T6NowMs() {
-  static const double ms_per_tick = [] {
-    LARGE_INTEGER f;
-    QueryPerformanceFrequency(&f);
-    return 1000.0 / static_cast<double>(f.QuadPart);
-  }();
-  LARGE_INTEGER c;
-  QueryPerformanceCounter(&c);
-  return static_cast<double>(c.QuadPart) * ms_per_tick;
+  return std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 // Game memory: the XEX data / bss and the game heaps (what the snapshots and the state hashes cover)
@@ -231,7 +222,11 @@ inline void T6WriteFileAtomic(const std::string& path, const std::string& text) 
   if (FILE* f = T6Open(tmp, "w")) {
     std::fputs(text.c_str(), f);
     std::fclose(f);
+#if defined(_WIN32)
     MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
+#else
+    std::rename(tmp.c_str(), path.c_str());
+#endif
   }
 }
 
@@ -262,10 +257,16 @@ struct T6RexRuntime {
 inline const T6RexRuntime& T6Rex() {
   static const T6RexRuntime r = [] {
     T6RexRuntime x{};
+#if defined(_WIN32)
     const HMODULE m = GetModuleHandleW(L"rexruntime.dll");
     const auto get = [m](auto& fn, const char* name) {
       fn = m ? reinterpret_cast<std::remove_reference_t<decltype(fn)>>(GetProcAddress(m, name)) : nullptr;
     };
+#else
+    const auto get = [](auto& fn, const char* name) {
+      fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(dlsym(RTLD_DEFAULT, name));
+    };
+#endif
     get(x.waiters, "rex_waiters");
     get(x.semaphore_count, "rex_semaphore_count");
     get(x.last_waiter_context, "rex_last_waiter_context");
@@ -286,9 +287,15 @@ inline const T6RexRuntime& T6Rex() {
     get(x.audio_xma_errors, "rex_audio_xma_errors");
     get(x.xma_stats, "rex_xma_stats");
     get(x.sem_stats, "rex_sem_stats");
+#if defined(_WIN32)
     if (const HMODULE gpu = GetModuleHandleW(L"rexgpu-xenos.dll"))
       x.swap_count = reinterpret_cast<uint32_t (*)()>(GetProcAddress(gpu, "rex_swap_count"));
     if (!x.swap_count) get(x.swap_count, "rex_swap_count");
+#else
+    if (HMODULE gpu = dlopen("librexgpu-xenos.so", RTLD_LAZY | RTLD_NOLOAD))
+      x.swap_count = reinterpret_cast<uint32_t (*)()>(dlsym(gpu, "rex_swap_count"));
+    if (!x.swap_count) get(x.swap_count, "rex_swap_count");
+#endif
     return x;
   }();
   return r;
