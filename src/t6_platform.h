@@ -22,6 +22,7 @@
 #include <sched.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <thread>
 
@@ -104,6 +105,87 @@ inline int _stricmp(const char* a, const char* b)
    if (!a || !b) return a == b ? 0 : (a ? 1 : -1);
    return ::strcasecmp(a, b);
 }
+// Windows memory-protection constants used by the host snapshot code.
+#ifndef PAGE_NOACCESS
+#define PAGE_NOACCESS 0x01
+#define PAGE_READONLY 0x02
+#define PAGE_READWRITE 0x04
+#define PAGE_WRITECOPY 0x08
+#define PAGE_EXECUTE 0x10
+#define PAGE_EXECUTE_READ 0x20
+#define PAGE_EXECUTE_READWRITE 0x40
+#define PAGE_EXECUTE_WRITECOPY 0x80
+#define PAGE_GUARD 0x100
+#endif
+
+inline int T6NativeProtection(DWORD flags)
+{
+   int protection = PROT_NONE;
+   if (flags & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+      protection |= PROT_READ;
+   if (flags & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+      protection |= PROT_WRITE;
+   if (flags & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+      protection |= PROT_EXEC;
+   return protection;
+}
+
+inline DWORD T6WindowsProtection(int protection)
+{
+   if ((protection & (PROT_READ | PROT_WRITE | PROT_EXEC)) == (PROT_READ | PROT_WRITE | PROT_EXEC))
+      return PAGE_EXECUTE_READWRITE;
+   if ((protection & (PROT_READ | PROT_EXEC)) == (PROT_READ | PROT_EXEC))
+      return PAGE_EXECUTE_READ;
+   if ((protection & PROT_EXEC) != 0 && (protection & PROT_READ) == 0)
+      return PAGE_EXECUTE;
+   if ((protection & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE))
+      return PAGE_READWRITE;
+   if ((protection & PROT_READ) != 0)
+      return PAGE_READONLY;
+   return PAGE_NOACCESS;
+}
+
+// POSIX implementation of the VirtualProtect subset used when restoring
+// guest-memory snapshots. The pre-change permission is inferred from maps so
+// the same API call can be used to restore it afterward.
+inline BOOL VirtualProtect(void* address, size_t size, DWORD new_protection, DWORD* old_protection)
+{
+   if (!address || size == 0) return FALSE;
+   const long page_size_value = ::sysconf(_SC_PAGESIZE);
+   if (page_size_value <= 0) return FALSE;
+   const uintptr_t page_size = static_cast<uintptr_t>(page_size_value);
+   const uintptr_t raw_start = reinterpret_cast<uintptr_t>(address);
+   if (raw_start > UINTPTR_MAX - size) return FALSE;
+   const uintptr_t start = raw_start & ~(page_size - 1);
+   const uintptr_t raw_end = raw_start + size;
+   if (raw_end > UINTPTR_MAX - (page_size - 1)) return FALSE;
+   const uintptr_t end = (raw_end + page_size - 1) & ~(page_size - 1);
+
+   if (old_protection) {
+      int old_native = PROT_READ | PROT_WRITE;
+      if (FILE* maps = std::fopen("/proc/self/maps", "r")) {
+         char line[512];
+         while (std::fgets(line, sizeof(line), maps)) {
+            unsigned long map_start = 0, map_end = 0;
+            char permissions[5] = {};
+            if (std::sscanf(line, "%lx-%lx %4s", &map_start, &map_end, permissions) == 3 &&
+                start >= map_start && start < map_end) {
+               old_native = 0;
+               if (permissions[0] == 'r') old_native |= PROT_READ;
+               if (permissions[1] == 'w') old_native |= PROT_WRITE;
+               if (permissions[2] == 'x') old_native |= PROT_EXEC;
+               break;
+            }
+         }
+         std::fclose(maps);
+      }
+      *old_protection = T6WindowsProtection(old_native);
+   }
+   return ::mprotect(reinterpret_cast<void*>(start), end - start, T6NativeProtection(new_protection)) == 0
+       ? TRUE : FALSE;
+}
+
 inline HMODULE GetModuleHandleW(const wchar_t* name)
 {
    if (!name || !*name) return ::dlopen(nullptr, RTLD_LAZY);
