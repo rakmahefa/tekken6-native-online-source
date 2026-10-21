@@ -49,18 +49,27 @@ Upnp upnpMap(int port)
 {
 	Upnp u;
 	u.port = port;
+#if defined(_WIN32)
 	WSADATA wsa;
 	if (WSAStartup(MAKEWORD(2, 2), &wsa))
 	{
 		u.error = "no Winsock";
 		return u;
 	}
+#endif
 	QStringList locations;
 	SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (s != INVALID_SOCKET)
 	{
+#if defined(_WIN32)
 		DWORD wait = 500;
 		setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&wait), sizeof(wait));
+#else
+		timeval wait{};
+		wait.tv_sec = 0;
+		wait.tv_usec = 500000;
+		setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof(wait));
+#endif
 		sockaddr_in to{};
 		to.sin_family = AF_INET;
 		to.sin_port = htons(1900);
@@ -75,8 +84,12 @@ Upnp upnpMap(int port)
 		for (const ULONGLONG until = GetTickCount64() + 3000; GetTickCount64() < until;)
 		{
 			sockaddr_in from{};
+#if defined(_WIN32)
 			int fromLen = sizeof(from);
-			const int n = recvfrom(s, buf, sizeof(buf), 0, reinterpret_cast<sockaddr*>(&from), &fromLen);
+#else
+			socklen_t fromLen = sizeof(from);
+#endif
+			const int n = static_cast<int>(recvfrom(s, buf, sizeof(buf), 0, reinterpret_cast<sockaddr*>(&from), &fromLen));
 			if (n <= 0)
 			{
 				if (!locations.isEmpty())
@@ -139,12 +152,16 @@ Upnp upnpMap(int port)
 			const QUrl gu(loc);
 			sockaddr_in g{};
 			g.sin_family = AF_INET;
-			g.sin_port = htons(static_cast<u_short>(gu.port(80)));
+			g.sin_port = htons(static_cast<quint16>(gu.port(80)));
 			inet_pton(AF_INET, gu.host().toLatin1().constData(), &g.sin_addr);
 			if (SOCKET t2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); t2 != INVALID_SOCKET)
 			{
 				sockaddr_in me{};
+#if defined(_WIN32)
 				int len = sizeof(me);
+#else
+				socklen_t len = sizeof(me);
+#endif
 				char ip[64]{};
 				if (!connect(t2, reinterpret_cast<const sockaddr*>(&g), sizeof(g)) && !getsockname(t2, reinterpret_cast<sockaddr*>(&me), &len))
 					inet_ntop(AF_INET, &me.sin_addr, ip, sizeof(ip));
@@ -169,7 +186,9 @@ Upnp upnpMap(int port)
 		if (!u.mapped && u.error.contains("error 725"))
 			u.mapped = upnpAdd(u, 0);
 	}
+#if defined(_WIN32)
 	WSACleanup();
+#endif
 	return u;
 }
 
