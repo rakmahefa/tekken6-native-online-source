@@ -186,6 +186,54 @@ inline BOOL VirtualProtect(void* address, size_t size, DWORD new_protection, DWO
        ? TRUE : FALSE;
 }
 
+#ifndef MEM_COMMIT
+#define MEM_COMMIT 0x1000
+#endif
+
+struct MEMORY_BASIC_INFORMATION {
+   void* BaseAddress = nullptr;
+   void* AllocationBase = nullptr;
+   DWORD AllocationProtect = 0;
+   size_t RegionSize = 0;
+   DWORD State = 0;
+   DWORD Protect = PAGE_NOACCESS;
+   DWORD Type = 0;
+};
+
+inline size_t VirtualQuery(const void* address, MEMORY_BASIC_INFORMATION* info, size_t info_size)
+{
+   if (!address || !info || info_size < sizeof(MEMORY_BASIC_INFORMATION))
+      return 0;
+   const uintptr_t target = reinterpret_cast<uintptr_t>(address);
+   FILE* maps = std::fopen("/proc/self/maps", "r");
+   if (!maps)
+      return 0;
+   char line[512];
+   size_t result = 0;
+   while (std::fgets(line, sizeof(line), maps)) {
+      unsigned long map_start = 0, map_end = 0;
+      char permissions[5] = {};
+      if (std::sscanf(line, "%lx-%lx %4s", &map_start, &map_end, permissions) != 3)
+         continue;
+      if (target < map_start || target >= map_end)
+         continue;
+      int native = 0;
+      if (permissions[0] == 'r') native |= PROT_READ;
+      if (permissions[1] == 'w') native |= PROT_WRITE;
+      if (permissions[2] == 'x') native |= PROT_EXEC;
+      *info = MEMORY_BASIC_INFORMATION{};
+      info->BaseAddress = reinterpret_cast<void*>(map_start);
+      info->AllocationBase = info->BaseAddress;
+      info->RegionSize = map_end - map_start;
+      info->State = MEM_COMMIT;
+      info->Protect = T6WindowsProtection(native);
+      result = sizeof(MEMORY_BASIC_INFORMATION);
+      break;
+   }
+   std::fclose(maps);
+   return result;
+}
+
 inline HMODULE GetModuleHandleW(const wchar_t* name)
 {
    if (!name || !*name) return ::dlopen(nullptr, RTLD_LAZY);
