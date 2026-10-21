@@ -34,6 +34,11 @@ using LPARAM = qintptr;
 using WPARAM = quintptr;
 using UINT = unsigned int;
 using SHORT = qint16;
+#ifndef VK_BACK
+#define VK_BACK 0x08
+#define VK_RETURN 0x0D
+#define VK_ESCAPE 0x1B
+#endif
 using SOCKET = int;
 #ifndef INVALID_SOCKET
 #define INVALID_SOCKET (-1)
