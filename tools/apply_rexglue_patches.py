@@ -80,6 +80,7 @@ def apply_portable_sdk_exports(sdk: Path) -> bool:
             return False
         for i in range(first, last + 1):
             raw = lines[i]
+            newline = "\n" if raw.endswith("\n") else ""
             text_line = raw[:-1] if newline else raw
             stripped = text_line.lstrip()
             indent = text_line[:len(text_line) - len(stripped)]
