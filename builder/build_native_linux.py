@@ -163,25 +163,32 @@ def apply_sdk_patches() -> None:
     run([sys.executable, patch_tool, "--sdk", SDK], "apply project ReXGlue patches")
 
 
+def write_if_changed(path: Path, content: str) -> None:
+    if path.is_file() and path.read_text(encoding="utf-8") == content:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 def write_manifest() -> Path:
     xex = find_xex(GAME)
     if not xex:
         raise RuntimeError("native/game does not contain Default.xex; choose your own game copy first")
     config_source = ROOT / "builder" / "project" / "tekken6_config.toml"
     config_target = ROOT / "tekken6_config.toml"
-    shutil.copy2(config_source, config_target)
+    write_if_changed(config_target, config_source.read_text(encoding="utf-8"))
     manifest = ROOT / "tekken6_manifest.toml"
-    manifest.write_text(
-        '[project]\n'
-        'name = "tekken6"\n'
-        'sdk_version = "0.10.0"\n'
-        'game_root = "native/game"\n\n'
-        '[entrypoint]\n'
-        f'file_path = "native/game/{xex.name}"\n'
-        'out_directory_path = "generated/default"\n'
-        'includes = ["tekken6_config.toml"]\n',
-        encoding="utf-8",
+    content = (
+        '[project]\\n'
+        'name = "tekken6"\\n'
+        'sdk_version = "0.10.0"\\n'
+        'game_root = "native/game"\\n\\n'
+        '[entrypoint]\\n'
+        f'file_path = "native/game/{xex.name}"\\n'
+        'out_directory_path = "generated/default"\\n'
+        'includes = ["tekken6_config.toml"]\\n'
     )
+    write_if_changed(manifest, content)
     return manifest
 
 
@@ -257,8 +264,6 @@ def main(argv: list[str]) -> int:
         source = GAME
     elif len(args) == 1 and not args[0].startswith("--"):
         source = Path(args[0]).expanduser().resolve()
-        NATIVE.mkdir(parents=True, exist_ok=True)
-        prepare_game(source)
     elif not args:
         print("Usage: python3 builder/build_native_linux.py <Tekken 6 ISO or extracted folder>")
         print("       python3 builder/build_native_linux.py --check <ISO or folder>")
@@ -272,8 +277,11 @@ def main(argv: list[str]) -> int:
     log = NATIVE / "build.log"
     started = time.monotonic()
     try:
+        NATIVE.mkdir(parents=True, exist_ok=True)
+        if args and len(args) == 1 and not args[0].startswith("--"):
+            prepare_game(source)
         with log.open("a", encoding="utf-8") as stream:
-            stream.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] build source: {source}\n")
+            stream.write(f"\\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] build source: {source}\\n")
         build_game()
         say(f"Build completed in {time.monotonic() - started:.0f}s")
         return 0
