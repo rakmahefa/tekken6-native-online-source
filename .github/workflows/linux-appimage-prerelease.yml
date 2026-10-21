@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - feature/native-linux-build
+      - feature/appimage-workspace-override
     tags:
       - 'v*-test.*'
   pull_request:
     branches:
       - main
+      - feature/native-linux-build
   workflow_dispatch:
     inputs:
       version:
