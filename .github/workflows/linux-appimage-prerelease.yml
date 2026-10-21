@@ -49,8 +49,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            clang cmake ninja-build qt6-base-dev qt6-wayland libqt6svg6 \
-            libssl-dev libxkbcommon-dev curl file squashfs-tools desktop-file-utils
+            clang cmake ninja-build qt6-base-dev qt6-qpa-plugins qt6-wayland \
+            libqt6svg6 libssl-dev libxkbcommon-dev curl file squashfs-tools desktop-file-utils
 
       - name: Compute test-channel version
         id: meta
