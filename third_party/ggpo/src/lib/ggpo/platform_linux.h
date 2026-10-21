@@ -97,7 +97,7 @@ inline void OutputDebugStringA(const char* message)
 
 inline void DebugBreak()
 {
-   std::raise(SIGTRAP);
+   ::raise(SIGTRAP);
 }
 
 inline BOOL CreateDirectoryA(const char* path, void*)
