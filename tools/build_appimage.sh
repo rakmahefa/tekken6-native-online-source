@@ -90,6 +90,31 @@ PATH="$TOOL_DIR:$PATH" APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/tekken6-native-online.svg" \
     --plugin qt
 
+# linuxdeploy-plugin-qt currently selects xcb and common image-format plugins,
+# but may omit optional platform plugins and Qt's SVG icon engine. Bundle each
+# explicitly and ask linuxdeploy to resolve its transitive shared libraries.
+QT_PLUGIN_ROOT="$(qmake6 -query QT_INSTALL_PLUGINS)"
+WAYLAND_PLUGINS=("$QT_PLUGIN_ROOT"/platforms/libqwayland*.so)
+SVG_ICON_PLUGIN="$QT_PLUGIN_ROOT/iconengines/libqsvgicon.so"
+FOUND_WAYLAND=0
+for plugin in "${WAYLAND_PLUGINS[@]}"; do
+    [[ -f "$plugin" ]] || continue
+    FOUND_WAYLAND=1
+    relative="${plugin#"$QT_PLUGIN_ROOT/"}"
+    install -D -m 0755 "$plugin" "$APPDIR/usr/plugins/$relative"
+    APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" --appdir "$APPDIR" --library "$plugin"
+done
+if [[ "$FOUND_WAYLAND" -ne 1 ]]; then
+    echo "Qt Wayland platform plugins were not installed at $QT_PLUGIN_ROOT/platforms" >&2
+    exit 5
+fi
+if [[ ! -s "$SVG_ICON_PLUGIN" ]]; then
+    echo "Qt SVG icon engine was not installed at $SVG_ICON_PLUGIN" >&2
+    exit 5
+fi
+install -D -m 0755 "$SVG_ICON_PLUGIN" "$APPDIR/usr/plugins/iconengines/libqsvgicon.so"
+APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" --appdir "$APPDIR" --library "$SVG_ICON_PLUGIN"
+
 # Qt loads its OpenSSL backend and OpenSSL runtime libraries dynamically,
 # so linuxdeploy cannot always infer the libssl/libcrypto dependencies.
 # Bundle both SONAMEs explicitly rather than falling back to cert-only TLS.
