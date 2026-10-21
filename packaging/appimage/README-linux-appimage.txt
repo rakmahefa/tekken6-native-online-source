@@ -28,3 +28,12 @@ Qt launcher runtime, not the full compiler toolchain.
 Known limitations: this is a test prerelease. The full game build/play test is
 not verified by CI. Linux controller binding UI, some window hide/restore
 behavior, and Windows-only profiler/diagnostic paths remain incomplete.
+
+
+Runtime fix planned for the next prerelease: the package now explicitly includes the Qt Wayland platform plugin, Qt SVG image/icon plugins and the OpenSSL shared libraries used dynamically by Qt. CI checks those files and smoke-tests launcher startup.
+
+Network configuration: this public source intentionally does not include the official lobby endpoint or its pinned certificate. The placeholder endpoint cannot connect to the real profile/matchmaking service. Supply the actual endpoint and pinned PEM leaf certificate from the service maintainer when launching a private/test build:
+
+    T6_LOBBY_SERVER='tls://your-lobby-host:7700' T6_LOBBY_CERT='/path/to/pinned-lobby-cert.pem' ./Tekken6NativeOnline-x86_64.AppImage
+
+TLS certificate pinning remains enabled. The game builder operates locally and does not itself require lobby connectivity.
