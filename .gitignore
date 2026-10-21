@@ -7,6 +7,9 @@
 /build/
 /out/
 /runs/
+/native/
+/tekken6_manifest.toml
+/tekken6_config.toml
 /toolchain/
 *.log
 # The official build's settings and assets (lobby server, release repository, pinned certificate, rank pictures, art)
