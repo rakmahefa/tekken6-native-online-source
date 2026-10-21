@@ -90,17 +90,22 @@ Milestone 1 is complete only when:
 - Updated root CMake to select platform-specific GGPO sources and link `ws2_32`/`winmm` only on Windows.
 - Made GGPO UDP socket/address operations conditional for POSIX and replaced the Windows-only `DllMain` startup path with a Linux static initialization path.
 - Added `src/t6_platform.h` for host clocks/thread IDs, dynamic module/symbol lookup, CPUID and Linux `VirtualQuery`/`VirtualProtect` equivalents; updated common engine helpers, crash handling, hang diagnostics and profiling guards.
-- Added an SDL-based Linux keyboard input path preserving the `T6_NET_KEYS` layouts; Linux WinMM diagnostic and suspended-thread profiler sampling are reported as unsupported instead of being compiled as if they worked.
+- Added an SDL-based Linux keyboard input path preserving the `T6_NET_KEYS` layouts, plus Linux evdev polling for the launcher's basic confirm/cancel/stage gamepad buttons. Linux WinMM diagnostic and suspended-thread profiler sampling are reported as unsupported instead of being compiled as if they worked.
 - Added `builder/build_native_linux.py` for an explicitly supplied local ISO/folder, checksum validation, native XDVDFS extraction, ReXGlue codegen/patch steps and cached CMake/Ninja compilation. Added ignored paths for local generated/game output.
 - Added Linux conditionals to the Qt launcher: platform-specific CMake flags/libraries, Qt Network HTTP, POSIX audio fallback and system IDs, a lock-file single-instance mechanism, child process lifetime, Vulkan launch arguments and a Linux executable/build-state path.
 - Added README build instructions and a two-job Ubuntu smoke workflow.
 - Added the isolated platform smoke test for memory mapping APIs.
 
-### CI observations so far
+### CI observations — latest passing run
 
-GitHub Actions is being used iteratively, and earlier runs are expected to be red because each exposed a missing platform detail. The log from run [39555772037](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39555772037) showed that several GGPO Linux sources (including UDP, UDP protocol and the POSIX platform implementation) compiled. That run then found an extra preprocessor terminator in the engine test header and a missing Linux guard around `OutputDebugStringW`; both were corrected on the branch. The current replacement run must finish before this audit can claim the smoke checks are green.
+The latest PR workflow run [39556945540](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39556945540), at commit `f0e4200ac5ff5b291a4f343bb556030160e9edb4`, completed successfully in both jobs:
 
-CI has not been supplied with a retail game image; it intentionally cannot establish that the complete engine compiles or that the game can be played.
+- **Compile GGPO, XDVDFS and engine platform boundary:** CMake configuration succeeded, all GGPO POSIX sources and the XDVDFS utility compiled, the `VirtualQuery`/`VirtualProtect` smoke executable ran successfully, the Linux builder and SDK patcher passed `py_compile`, and `git diff --check` passed.
+- **Compile Qt launcher natively on Linux:** CMake configuration succeeded and the complete launcher target compiled and linked successfully with Clang and Qt 6 on Ubuntu 24.04.
+
+Earlier red runs exposed actual gaps (POSIX CRT helpers, UDP socket details, an extra header guard, missing platform aliases and a Win32-only logging call); the corresponding fixes are in the current passing commit.
+
+CI has intentionally not been supplied with a retail game image. It does **not** prove the complete ReXGlue-generated engine links or that gameplay/network/controller flows work in a real session. Those require a maintainer's local build from their own supported copy.
 
 ## Explicit remaining risks / known limitations
 
