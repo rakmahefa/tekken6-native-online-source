@@ -1,4 +1,4 @@
-name: Linux port smoke test
+name: Native Linux port smoke tests
 
 on:
   push:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   compile-posix-components:
-    name: Compile GGPO POSIX port and XDVDFS tool
+    name: Compile native POSIX components and launcher
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -36,8 +36,14 @@ jobs:
           -DCMAKE_CXX_COMPILER=clang++
           -DCMAKE_BUILD_TYPE=Release
 
-      - name: Compile GGPO and XDVDFS
+      - name: Compile GGPO, XDVDFS and engine platform boundary
         run: cmake --build build/linux-port --parallel 2
+
+      - name: Exercise POSIX memory compatibility wrappers
+        run: ./build/linux-port/t6_platform_smoke
+
+      - name: Validate Python builder syntax
+        run: python3 -m py_compile builder/build_native_linux.py tools/apply_rexglue_patches.py
 
       - name: Configure native Qt launcher
         run: >-
