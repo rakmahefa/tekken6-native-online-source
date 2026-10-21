@@ -2,6 +2,7 @@
 
 #include "launcher.h"
 #if !defined(_WIN32)
+#include <array>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
@@ -367,7 +368,7 @@ bool Launcher::padDown(PadKind kind)
 	constexpr size_t wordBits = sizeof(unsigned long) * 8;
 	constexpr size_t eventWords = (EV_MAX + wordBits) / wordBits;
 	constexpr size_t keyWords = (KEY_MAX + wordBits) / wordBits;
-	const auto bitSet = [](const unsigned long* bits, unsigned int bit) {
+	const auto bitSet = [=](const unsigned long* bits, unsigned int bit) {
 		return (bits[bit / wordBits] & (1UL << (bit % wordBits))) != 0;
 	};
 
