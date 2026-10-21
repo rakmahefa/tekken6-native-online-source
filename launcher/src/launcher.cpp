@@ -530,9 +530,11 @@ void Launcher::refreshAll()
 		// a stored login: no form while the launcher connects and signs in by itself
 		const bool waiting = !m_authed && !m_session.isEmpty();
 		const QString who = settings().value("account").toString();
+		const bool offlineNotice = !serverConfigured();
 		m_loginForm->setVisible(!waiting);
-		m_loginWait->setVisible(waiting);
-		m_loginWaitSub->setVisible(waiting);
+		// Show the missing-server explanation above the form even when no saved session exists.
+		m_loginWait->setVisible(waiting || offlineNotice);
+		m_loginWaitSub->setVisible(waiting || offlineNotice);
 		const bool lobbyReady = serverConfigured();
 		m_loginWait->setText(m_connected ? (who.isEmpty() ? T("Signing in…") : T("Signing in as %1…").arg(who))
 		                                 : lobbyReady ? T("Connecting to the server…") : T("Offline test build"));
