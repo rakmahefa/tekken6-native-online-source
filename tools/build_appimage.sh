@@ -109,6 +109,38 @@ if [[ "$FOUND_WAYLAND" -ne 1 ]]; then
     exit 5
 fi
 
+# Wayland's QPA platform plugin loads shell and client-buffer integrations
+# from separate Qt plugin categories. Copying only platforms/libqwayland*.so
+# is insufficient: Qt would start with "No shell integration named xdg-shell"
+# and "Available client buffer integrations: QList()" on a Wayland desktop.
+for category in wayland-shell-integration wayland-graphics-integration-client; do
+    category_dir="$QT_PLUGIN_ROOT/$category"
+    if [[ ! -d "$category_dir" ]]; then
+        echo "Required Qt Wayland plugin category is missing: $category_dir" >&2
+        exit 5
+    fi
+
+    shopt -s nullglob
+    category_plugins=("$category_dir"/*.so)
+    shopt -u nullglob
+    if [[ "${#category_plugins[@]}" -eq 0 ]]; then
+        echo "No Qt plugins found in $category_dir" >&2
+        exit 5
+    fi
+
+    for plugin in "${category_plugins[@]}"; do
+        relative="${plugin#"$QT_PLUGIN_ROOT/"}"
+        install -D -m 0755 "$plugin" "$APPDIR/usr/plugins/$relative"
+        APPIMAGE_EXTRACT_AND_RUN=1 "$LINUXDEPLOY_BIN" --appdir "$APPDIR" --library "$plugin"
+    done
+done
+
+# The shell integration names are Qt plugin metadata, not shared-library
+# names. Assert the desktop xdg-shell and the wayland-egl client integration
+# are present in their exact category directories.
+test -s "$APPDIR/usr/plugins/wayland-shell-integration/libxdg-shell.so"
+test -s "$APPDIR/usr/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so"
+
 # The headless CI smoke test uses Qt's offscreen QPA backend; it is also handy
 # for troubleshooting installations without a running X11/Wayland session.
 OFFSCREEN_PLUGIN="$QT_PLUGIN_ROOT/platforms/libqoffscreen.so"
