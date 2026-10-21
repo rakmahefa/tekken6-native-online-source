@@ -164,9 +164,12 @@ jobs:
             echo "AppImage is missing a required Qt image/platform/TLS component." >&2
             exit 1
           fi
-          if ! grep -q 'GitHub release feed reachable (HTTP 200)' "$log"; then
+          # GitHub may return 403/429 for shared hosted-runner IPs. Any HTTP
+          # status means HTTPS/TLS negotiation and certificate verification
+          # completed; explicit Qt/OpenSSL transport errors are rejected above.
+          if ! grep -Eq 'GitHub release feed reachable \(HTTP 200\)|GitHub release check failed \(HTTP status [0-9]{3}' "$log"; then
             cat "$log"
-            echo "The bundled Qt networking/TLS runtime could not reach the configured GitHub release feed." >&2
+            echo "The bundled Qt networking/TLS runtime did not receive an HTTP response from the configured GitHub release feed." >&2
             exit 1
           fi
           cat "$log"
