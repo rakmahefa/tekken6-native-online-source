@@ -101,7 +101,11 @@ Launcher::~Launcher()
 	}
 	catch (...)  // (a destructor does not throw: the process ends right after it)
 	{
+#if defined(_WIN32)
 		OutputDebugStringW(L"Tekken 6 Online launcher: exception while closing\n");
+#else
+		qWarning() << "Tekken 6 Online launcher: exception while closing";
+#endif
 	}
 }
 
