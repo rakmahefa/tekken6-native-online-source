@@ -141,13 +141,12 @@ CI has intentionally not been supplied with a retail game image. It does **not**
 
 ### CI result and published prerelease
 
-- Successful build + publish workflow: [run 39563204068](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563204068), built from `dfda7e5afb16d64c98334ada71ee3d9bd1d5c0f3`.
-- Artifact validation passed, and GitHub Actions uploaded `Tekken6NativeOnline-linux-2.1.6-test.1` (AppImage, `SHA256SUMS`, usage note; 14-day CI retention).
-- Published test prerelease: [`v2.1.6-test.1`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1).
-- Direct AppImage: [`Tekken6NativeOnline-x86_64.AppImage`](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.1/Tekken6NativeOnline-x86_64.AppImage), size 118,179,008 bytes, SHA-256 `52c56c8887dedafe3f7d0b0b6a16354185452b98585f77c7748caed652f15c16`.
-- The independent Linux smoke workflow also passed both jobs at the same source SHA: [run 39563208786](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39563208786).
+- Successful build, checksum verification, offscreen startup smoke test and publish: [GitHub Actions run 39568524990](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39568524990), built from `7774abced67505bc0a23a532c04c11d5e9d7b734`.
+- Latest published test prerelease: [`v2.1.6-test.3`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.3).
+- Release assets: [AppImage](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/Tekken6NativeOnline-x86_64.AppImage), [SHA-256 manifest](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/SHA256SUMS), and [test instructions](https://github.com/rakmahefa/tekken6-native-online-source/releases/download/v2.1.6-test.3/README-linux-appimage.txt).
+- The AppImage explicitly deploys Qt Wayland and offscreen platform plugins, Qt SVG image/icon plugins, and `libssl.so.3`/`libcrypto.so.3`. CI verified the executable x86_64 image, checksum manifest, desktop entry, and a headless launch that rejects missing Qt platform/SVG/TLS runtime components.
 
-The AppImage has been assembled and its file/checksum/desktop metadata validated by CI. It has **not** been launched on a user desktop, and CI does **not** establish that a player's XEX code-generates, the full game links or gameplay works. Those remain the next manual acceptance test.
+**The packaging/startup smoke test passes, but full end-to-end gameplay is not yet validated.** A maintainer must still launch this AppImage on a Linux desktop, build from their own supported game copy, and test the native executable.
 
 ### Known limitations for this milestone
 
@@ -158,4 +157,4 @@ The AppImage has been assembled and its file/checksum/desktop metadata validated
 
 ## Current milestone status
 
-**Milestone 1 smoke checks passed on Ubuntu.** AppImage [v2.1.6-test.1](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.1) was built and published successfully, but a manual desktop launch exposed missing guarantees for Qt Wayland/SVG plugins and OpenSSL shared libraries. The follow-up packaging changes explicitly include and validate those runtime components and add a headless startup smoke test. The public package also lacks the private lobby endpoint and pinned certificate, so profile/matchmaking needs valid maintainer-provided server settings; the game builder is local and does not require lobby connectivity. Full game linkage/gameplay still requires a local supported game copy.
+**Milestones 1–2 CI checks pass on Ubuntu.** The latest published package is [`v2.1.6-test.3`](https://github.com/rakmahefa/tekken6-native-online-source/releases/tag/v2.1.6-test.3); its build, checksum checks and offscreen startup smoke test passed in [run 39568524990](https://github.com/rakmahefa/tekken6-native-online-source/actions/runs/39568524990). The manual `v2.1.6-test.1` launch exposed missing Qt Wayland/SVG and OpenSSL components; the new package bundles these explicitly and CI now detects those regressions. Actual desktop launch, local game code generation/linking and gameplay remain unverified. The public package has no private lobby endpoint/pin, so real profile/matchmaking requires valid maintainer-provided server settings; the game builder itself is local and does not require lobby connectivity.
