@@ -8155,8 +8155,10 @@ index 8684eda..48463c2 100644
 +#include <cstdlib>
 +#include <string>
 +#include <rex/memory/utils.h>
++#if defined(_WIN32)
 +#define NOMINMAX
 +#include <windows.h>
++#endif
  #include <rex/math.h>
  #include <rex/hook.h>
  #include <rex/types.h>
@@ -8177,9 +8179,16 @@ index 8684eda..48463c2 100644
 +  if (ctx) {
 +    uint8_t* mb = REX_KERNEL_MEMORY()->virtual_membase();
 +    auto readable = [](const void* p) {
++#if defined(_WIN32)
 +      MEMORY_BASIC_INFORMATION mbi{};
 +      return VirtualQuery(p, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT &&
 +             !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD));
++#else
++      // VirtualQuery-based guest stack probing is Windows-only. Preserve the
++      // opt-in allocation log on Linux but skip potentially unsafe stack reads.
++      (void)p;
++      return false;
++#endif
 +    };
 +    uint32_t sp = ctx->r1.u32;
 +    for (int i = 0; i < 8 && sp; i++) {
