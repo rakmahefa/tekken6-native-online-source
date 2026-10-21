@@ -71,6 +71,23 @@ The builder validates the supported USA/Europe Rev 1 `Default.xex` SHA-256 befor
 
 **Current port limitations:** The latest Ubuntu CI smoke run successfully compiles/links the Qt launcher and compiles the independent GGPO/XDVDFS/engine-platform test targets, but it does not build or validate the complete game because the supported `Default.xex` is intentionally not present in the public repository. The SDL keyboard mapping in the engine and basic evdev confirm/cancel/stage button polling in the launcher still need a full game/play test. The launcher’s controller-capture/binding UI does not yet enumerate Linux controllers. Windows-only input diagnostics and suspended-thread profiler sampling are not ported, and Linux window hide/restore helpers are currently no-ops. Vulkan is used for Linux GPU selection. Treat Linux support as experimental until the entire game builds from a local copy and real gameplay is tested.
 
+## Linux AppImage test prerelease (experimental)
+
+The GitHub Actions workflow at .github/workflows/linux-appimage-prerelease.yml now builds a native Qt launcher AppImage, uploads it as a CI artifact, and can publish the same verified files as a GitHub prerelease. Pull requests and pushes to the Linux development branch build the artifact only; publishing is gated behind a test tag or an explicit workflow-dispatch input.
+
+To request a prerelease, open **Actions → Linux AppImage prerelease → Run workflow**, select the Linux development branch, enter a version such as `0.1.0-test.1`, and enable **Publish the successfully built AppImage as a GitHub prerelease**. Alternatively, a tag such as `v0.1.0-test.1` triggers a build and prerelease publication. The tag keeps the launcher's existing test-channel version handling compatible.
+
+Download `Tekken6NativeOnline-x86_64.AppImage`, make it executable, and launch it:
+
+```sh
+chmod +x Tekken6NativeOnline-x86_64.AppImage
+./Tekken6NativeOnline-x86_64.AppImage
+```
+
+The AppImage includes the Qt launcher runtime plus a clean copy of the project source and pinned ReXGlue SDK required by the player-side builder. On first launch it stages that source tree into `~/.local/share/tekken6-native-online/workspace`; the game image, generated code, save data and compiled game stay outside the AppImage and are never uploaded by the workflow.
+
+**The compiler/toolchain is not bundled.** Building the game from your own ISO/folder still requires Clang 18+, CMake 3.25+, Ninja, Python 3, Git, Vulkan development headers and the Linux audio/window-system development packages listed above. This AppImage milestone verifies packaging and launcher build only; a successful local game build and gameplay test are still needed before a stable release.
+
 ## Credits
 
 - Based on [mahmoud-mess/tekken6-recomp](https://github.com/mahmoud-mess/tekken6-recomp) (the original ReXGlue setup
