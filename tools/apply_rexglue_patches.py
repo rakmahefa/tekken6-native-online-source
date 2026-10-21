@@ -27,6 +27,17 @@ def apply(repo: Path, patch: Path, base: str) -> bool:
     if git(repo, "apply", "--reverse", "--check", str(patch), check=False).returncode == 0:
         print(f"{patch.name}: already applied")
         return True
+    # The portable export overlay changes only a small number of lines added by
+    # this patch, so a reverse-check no longer matches byte-for-byte on reruns.
+    if patch.name == "0001-tekken6-sdk-changes.patch":
+        config_header = repo / "include" / "rex" / "codegen" / "config.h"
+        logging_source = repo / "src" / "core" / "logging.cpp"
+        if (config_header.is_file() and logging_source.is_file()
+                and "nonVolatileAsLocal" in config_header.read_text(encoding="utf-8")
+                and "rex_trace_everything" in logging_source.read_text(encoding="utf-8")
+                and "REX_T6_EXPORT" in logging_source.read_text(encoding="utf-8")):
+            print(f"{patch.name}: already applied (portable export overlay present)")
+            return True
     # Source archives used by portable packages intentionally omit Git metadata.
     # In that case, patch application is still safe: require an exact forward
     # applicability check, otherwise leave the SDK untouched and report why.
