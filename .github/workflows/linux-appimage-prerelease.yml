@@ -49,8 +49,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            clang cmake ninja-build qt6-base-dev libxkbcommon-dev \
-            curl file squashfs-tools desktop-file-utils
+            clang cmake ninja-build qt6-base-dev qt6-wayland libqt6svg6 \
+            libssl-dev libxkbcommon-dev curl file squashfs-tools desktop-file-utils
 
       - name: Compute test-channel version
         id: meta
@@ -125,6 +125,32 @@ jobs:
           grep -q 'ELF' <(file dist/Tekken6NativeOnline-x86_64.AppImage)
           (cd dist && sha256sum --check SHA256SUMS)
           desktop-file-validate build/appimage/AppDir/usr/share/applications/tekken6-native-online.desktop
+
+      - name: Smoke-test AppImage startup, SVG icons and Qt TLS backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/appimage-startup.log"
+          set +e
+          timeout --signal=TERM 12s env \
+            APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen \
+            ./dist/Tekken6NativeOnline-x86_64.AppImage >"$log" 2>&1
+          status=$?
+          set -e
+          # The GUI event loop is expected to remain open until timeout.
+          if [ "$status" -ne 124 ] && [ "$status" -ne 0 ]; then
+            cat "$log"
+            echo "AppImage startup smoke test exited with status $status" >&2
+            exit "$status"
+          fi
+          if grep -E \
+            'Could not find the Qt platform plugin|Failed to load libssl/libcrypto|does not support QSslSocket|QPainter::begin: Paint device returned engine == 0' \
+            "$log"; then
+            cat "$log"
+            echo "AppImage is missing a required Qt image/platform/TLS component." >&2
+            exit 1
+          fi
+          cat "$log"
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
