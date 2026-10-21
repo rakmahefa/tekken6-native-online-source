@@ -156,7 +156,7 @@ jobs:
             exit "$status"
           fi
           if grep -E \
-            'Could not find the Qt platform plugin|Failed to load libssl/libcrypto|does not support QSslSocket|QPainter::begin: Paint device returned engine == 0' \
+            'Could not find the Qt platform plugin|No shell integration named|Loading shell integration failed|Failed to load client buffer integration|Available client buffer integrations: QList\\(\\)|Failed to load libssl/libcrypto|does not support QSslSocket|QPainter::begin: Paint device returned engine == 0' \
             "$log"; then
             cat "$log"
             echo "AppImage is missing a required Qt image/platform/TLS component." >&2
