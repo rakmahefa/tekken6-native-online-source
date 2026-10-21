@@ -5,6 +5,15 @@
 // Root: the folder with the native build, source tree and player-side builder.
 QString root()
 {
+#if !defined(_WIN32)
+	// An AppImage is mounted read-only. AppRun copies the distributable source
+	// payload to this writable per-user directory so the player-side builder can
+	// create native/, generated sources and its incremental CMake cache there.
+	const QString appImageSource = qEnvironmentVariable("T6_APPIMAGE_SOURCE");
+	if (!appImageSource.isEmpty() &&
+	    QFile::exists(QDir(appImageSource).filePath("builder/build_native_linux.py")))
+		return QDir(appImageSource).absolutePath();
+#endif
 	QDir d(QCoreApplication::applicationDirPath());
 	for (int i = 0; i < 4; i++)
 	{
