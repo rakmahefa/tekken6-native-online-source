@@ -236,6 +236,17 @@ jobs:
           python3 builder/build_native_linux.py --help | tee "$RUNNER_TEMP/builder-help.txt"
           grep -Fq 'builder/build_native_linux.py --update' "$RUNNER_TEMP/builder-help.txt"
 
+          # Exercise the user's --update command too. The packaged public
+          # workspace contains no game data, so the expected result is a
+          # clean validation error before any compilation starts.
+          set +e
+          python3 builder/build_native_linux.py --update > "$RUNNER_TEMP/builder-update.txt" 2>&1
+          update_status=$?
+          set -e
+          cat "$RUNNER_TEMP/builder-update.txt"
+          test "$update_status" -eq 1
+          grep -Fq 'ERROR no validated game copy is staged in native/game' "$RUNNER_TEMP/builder-update.txt"
+
   publish-prerelease:
     name: Publish GitHub test prerelease
     needs: [build-appimage, smoke-test-builder-workspace]
